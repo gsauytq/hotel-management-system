@@ -1,0 +1,12 @@
+packages:
+  - apps/*
+  - packages/*
+
+# pnpm 12：允许执行安装脚本的依赖白名单（Prisma engines / esbuild 需要）
+allowBuilds:
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+
+minimumReleaseAgeExclude:
+  - pinia@4.1.0

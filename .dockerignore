@@ -1,0 +1,14 @@
+# Docker 构建上下文排除项（真实密钥/本地 env 永不进入镜像）
+
+.git
+.gitignore
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/*.log
+**/.env
+**/generated
+docs
+openapi
+*.md

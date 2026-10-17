@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# generated code (Prisma Client)
+apps/server/src/generated/
+
+# test / coverage
+coverage/
+
+# logs
+*.log
+logs/
+
+# local env files（真实密钥永不入库；示例文件除外）
+.env
+.env.local
+.env.*.local
+apps/server/.env
+apps/web/.env
+apps/web/.env.local
+apps/web/.env.*.local
+
+# editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

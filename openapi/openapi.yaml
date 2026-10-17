@@ -1,0 +1,1556 @@
+# =====================================================================
+# 酒店管理系统（HMS）OpenAPI 契约 v1.0（待评审，未冻结）
+# 单一事实来源：前后端类型一律经 @hms/shared 引用本契约描述的结构。
+# 变更流程见 docs/api-contract.md §11；需求编号/测试编号见
+# docs/requirements-traceability.md。冲突时以本文件为准并触发评审。
+# =====================================================================
+openapi: 3.0.3
+info:
+  title: Hotel Management System API
+  version: 1.0.0
+  description: |
+    小型酒店管理系统后端 API。
+
+    - 认证：服务器端 Session，凭证为 HttpOnly Cookie `hms_sid`（单一认证方案，不叠加 Bearer/JWT）。
+    - 响应信封：成功 `{ "data": ... }`；失败 `{ "error": { code, message, details? } }` + 语义化 HTTP 状态码。
+    - 列表：`data.items` + `data.pagination`；分页 `page`/`pageSize`（≤100），排序 `sort=field:asc|desc`（每端点白名单）。
+    - 日期：`YYYY-MM-DD` 为酒店本地日历日；时刻为 ISO 8601 UTC。
+    - 金额：DECIMAL(10,2) 字符串化数字，币种 CNY。
+    - ⚠️ 需求编号为假设基线（未批准），见 docs/requirements-traceability.md。
+servers:
+  - url: /api/v1
+    description: 同源部署（Nginx 反代）；开发经 Vite proxy
+tags:
+  - name: auth
+  - name: users
+  - name: room-types
+  - name: rooms
+  - name: guests
+  - name: bookings
+  - name: stays
+  - name: orders
+
+security:
+  - cookieAuth: []
+
+paths:
+  # ---------------------------------------------------------------- auth
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: 员工登录（A1）
+      security: []
+      x-requirement-id: FR-AUTH-001
+      x-test-ids: [TC-AUTH-001, TC-AUTH-002, TC-AUTH-003, TC-AUTH-004]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example: { username: front01, password: 'Plain#2026!' }
+      responses:
+        '200':
+          description: '登录成功，Set-Cookie: hms_sid（HttpOnly; SameSite=Strict; Path=/）'
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: hms_sid=<64hex>; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SessionUser' }
+              example:
+                data: { id: 2, username: front01, displayName: 王小雅, role: RECEPTIONIST }
+        '401':
+          description: 用户名或密码错误（统一文案防枚举）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: INVALID_CREDENTIALS, message: 用户名或密码错误 }
+        '423':
+          description: 连续失败 5 次，账号锁定 15 分钟
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: ACCOUNT_LOCKED, message: '失败次数过多，账号已锁定，请 15 分钟后重试' }
+        '429':
+          description: 登录尝试过于频繁（每 IP 每分钟 10 次，security-design §3）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: RATE_LIMITED, message: 尝试次数过多，请稍后再试 }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: 登出（A2），会话即刻失效
+      x-requirement-id: FR-AUTH-002
+      x-test-ids: [TC-AUTH-005]
+      responses:
+        '200':
+          description: 登出成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OkResult' }
+              example: { data: { ok: true } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      summary: 当前登录用户（A3），用于刷新后重建会话
+      x-requirement-id: FR-AUTH-003
+      x-test-ids: [TC-AUTH-006]
+      responses:
+        '200':
+          description: 当前用户
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/SessionUser'
+                      - type: object
+                        properties:
+                          status: { $ref: '#/components/schemas/UserStatus' }
+              example:
+                data: { id: 2, username: front01, displayName: 王小雅, role: RECEPTIONIST, status: ACTIVE }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------------------------------------------------------- users
+  /users:
+    get:
+      tags: [users]
+      operationId: listUsers
+      summary: 员工列表（U1，仅 ADMIN）
+      x-requirement-id: FR-USER-001
+      x-test-ids: [TC-USER-001, TC-USER-002, TC-SEC-002]
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - { name: role, in: query, schema: { $ref: '#/components/schemas/Role' } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/UserStatus' } }
+        - { name: keyword, in: query, schema: { type: string, maxLength: 50 }, description: 姓名/用户名模糊 }
+        - { name: sort, in: query, schema: { type: string, default: 'createdAt:desc' }, description: '白名单: createdAt,username,lastLoginAt' }
+      responses:
+        '200':
+          description: 分页员工列表（不含 password_hash）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/UserListItem' }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [users]
+      operationId: createUser
+      summary: 创建员工（U2，仅 ADMIN）
+      x-requirement-id: FR-USER-002
+      x-test-ids: [TC-USER-003, TC-USER-004, TC-USER-005]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
+            example: { username: front02, password: 'Init#12345', displayName: 李雷, role: RECEPTIONIST }
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/UserListItem' }
+              example:
+                data: { id: 3, username: front02, displayName: 李雷, role: RECEPTIONIST, status: ACTIVE, lastLoginAt: null, createdAt: '2026-10-14T06:00:00.000Z' }
+        '409':
+          description: 用户名已存在
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: DUPLICATE_USERNAME, message: 用户名已存在 }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /users/{id}:
+    get:
+      tags: [users]
+      operationId: getUser
+      summary: 员工详情（U5★ 契约增量，仅 ADMIN；需评审追认）
+      x-requirement-id: FR-USER-001
+      x-test-ids: [TC-USER-001]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      responses:
+        '200':
+          description: 员工详情（不含 password_hash）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/UserListItem' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    patch:
+      tags: [users]
+      operationId: updateUser
+      summary: 修改员工（U3，仅 ADMIN）；不可停用自己
+      x-requirement-id: FR-USER-003
+      x-test-ids: [TC-USER-006, TC-USER-007, TC-SEC-003]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserRequest' }
+            example: { displayName: 李雷（值班）, status: DISABLED }
+      responses:
+        '200':
+          description: 更新后对象
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/UserListItem' }
+        '403':
+          description: 试图停用自己等资源级拒绝
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: FORBIDDEN, message: 不能停用当前登录账号 }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{id}/password:
+    patch:
+      tags: [users]
+      operationId: resetUserPassword
+      summary: 重置员工密码（U4，仅 ADMIN）；重置后该用户全部会话失效
+      x-requirement-id: FR-USER-004
+      x-test-ids: [TC-USER-008, TC-USER-009]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+            example: { newPassword: 'New#Pass1234' }
+      responses:
+        '200':
+          description: 重置成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OkResult' }
+              example: { data: { ok: true } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # ---------------------------------------------------------------- room-types
+  /room-types:
+    get:
+      tags: [room-types]
+      operationId: listRoomTypes
+      summary: 房型列表（R1）
+      x-requirement-id: FR-RT-001
+      x-test-ids: [TC-RT-001]
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/RoomTypeStatus' } }
+      responses:
+        '200':
+          description: 房型列表（含未停用房间数）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/RoomType' }
+              example:
+                data:
+                  items:
+                    - { id: 1, code: STD, name: 标准大床房, basePrice: 288.00, capacity: 2, description: '20㎡，安静内院', status: ACTIVE, roomCount: 12, createdAt: '2026-09-01T02:00:00.000Z', updatedAt: '2026-09-01T02:00:00.000Z' }
+    post:
+      tags: [room-types]
+      operationId: createRoomType
+      summary: 创建房型（R2，仅 ADMIN）
+      x-requirement-id: FR-RT-002
+      x-test-ids: [TC-RT-002, TC-RT-003, TC-RT-004]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoomTypeRequest' }
+            example: { code: DLX, name: 豪华大床房, basePrice: 388.00, capacity: 2, description: '25㎡，高层城景' }
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RoomType' }
+        '409':
+          description: 房型代码已存在
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: ROOM_TYPE_CODE_EXISTS, message: 房型代码已存在 }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /room-types/{id}:
+    get:
+      tags: [room-types]
+      operationId: getRoomType
+      summary: 房型详情（R5★ 契约增量，需评审追认）
+      x-requirement-id: FR-RT-001
+      x-test-ids: [TC-RT-001]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      responses:
+        '200':
+          description: 房型详情
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RoomType' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    patch:
+      tags: [room-types]
+      operationId: updateRoomType
+      summary: 修改房型（R3，仅 ADMIN）；调价不影响存量预订
+      x-requirement-id: FR-RT-002
+      x-test-ids: [TC-RT-005, TC-BK-011]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoomTypeUpdateRequest' }
+            example: { name: 豪华大床房（翻新）, basePrice: 428.00 }
+      responses:
+        '200':
+          description: 更新后对象
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RoomType' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /room-types/{id}/archive:
+    post:
+      tags: [room-types]
+      operationId: archiveRoomType
+      summary: 归档房型（R4，仅 ADMIN）；存在未完结预订/在住时拒绝
+      x-requirement-id: FR-RT-002
+      x-test-ids: [TC-RT-006, TC-RT-007]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      responses:
+        '200':
+          description: 归档成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RoomType' }
+        '409':
+          description: 存在 CONFIRMED 预订或 CHECKED_IN 在住
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: ROOM_TYPE_ARCHIVED, message: 该房型存在未完结预订或在住，不可归档 }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- rooms
+  /rooms:
+    get:
+      tags: [rooms]
+      operationId: listRooms
+      summary: 客房列表/房态看板（M1）
+      x-requirement-id: FR-RM-001
+      x-test-ids: [TC-RM-001, TC-RM-002]
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/RoomStatus' } }
+        - { name: roomTypeId, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: roomNumber, in: query, schema: { type: string, minLength: 1, maxLength: 20 }, description: '★ 增量参数（需评审追认）：房号前缀筛选' }
+        - { name: sort, in: query, schema: { type: string, default: 'roomNumber:asc' }, description: '白名单: roomNumber,status,createdAt' }
+      responses:
+        '200':
+          description: 分页客房列表（OCCUPIED 含在住摘要）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Room' }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
+              example:
+                data:
+                  items:
+                    - id: 12
+                      roomNumber: '0821'
+                      roomTypeId: 1
+                      roomTypeName: 标准大床房
+                      status: OCCUPIED
+                      note: null
+                      currentStay: { stayId: 501, guestName: 张三, checkInAt: '2026-10-13T14:02:11.000Z', expectedCheckOutDate: '2026-10-15' }
+                      createdAt: '2026-09-01T02:00:00.000Z'
+                      updatedAt: '2026-10-13T14:02:11.000Z'
+                  pagination: { page: 1, pageSize: 20, total: 12, totalPages: 1 }
+    post:
+      tags: [rooms]
+      operationId: createRoom
+      summary: 创建客房（M3，仅 ADMIN）
+      x-requirement-id: FR-RM-002
+      x-test-ids: [TC-RM-005, TC-RM-006, TC-RM-007]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRoomRequest' }
+            example: { roomNumber: '0822', roomTypeId: 1, note: 无窗房 }
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Room' }
+        '409':
+          description: 房号已存在
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: ROOM_NUMBER_EXISTS, message: 房号已存在 }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /rooms/available:
+    get:
+      tags: [rooms]
+      operationId: listAvailableRooms
+      summary: 按房型+日期查询可分配房间（M2）
+      description: 返回 VACANT_CLEAN/VACANT_DIRTY 且区间 [checkInDate, checkOutDate) 无占用行的房间
+      x-requirement-id: FR-RM-004
+      x-test-ids: [TC-RM-003, TC-RM-004, TC-SY-013]
+      parameters:
+        - { name: roomTypeId, in: query, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: checkInDate, in: query, required: true, schema: { type: string, format: date } }
+        - { name: checkOutDate, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: 可分配房间
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/AvailableRoom' }
+              example:
+                data:
+                  items:
+                    - { id: 13, roomNumber: '0823', status: VACANT_CLEAN }
+                    - { id: 15, roomNumber: '0825', status: VACANT_DIRTY }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /rooms/{id}:
+    get:
+      tags: [rooms]
+      operationId: getRoom
+      summary: 客房详情（M6★ 契约增量，需评审追认）
+      x-requirement-id: FR-RM-001
+      x-test-ids: [TC-RM-002]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      responses:
+        '200':
+          description: 客房详情（OCCUPIED 含在住摘要）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Room' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    patch:
+      tags: [rooms]
+      operationId: updateRoom
+      summary: 修改客房（M4，仅 ADMIN）；OCCUPIED 时仅可改 note
+      x-requirement-id: FR-RM-002
+      x-test-ids: [TC-RM-008, TC-RM-009]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateRoomRequest' }
+            example: { roomTypeId: 2, note: 已装新风 }
+      responses:
+        '200':
+          description: 更新后对象
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Room' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 在住房不可改房型/房号
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: ROOM_STATUS_INVALID, message: 在住房间不可修改房型或房号 }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /rooms/{id}/status:
+    patch:
+      tags: [rooms]
+      operationId: updateRoomStatus
+      summary: 房态变更（M5）；按状态机校验，OCCUPIED 只能经退房事务迁出
+      description: 清洁完成（DIRTY→CLEAN）任何登录角色；进入/退出 MAINTENANCE、DISABLED 仅 ADMIN
+      x-requirement-id: FR-RM-003
+      x-test-ids: [TC-RM-010, TC-RM-011, TC-RM-012, TC-SEC-008]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/RoomStatus' }
+            example: { status: VACANT_CLEAN }
+      responses:
+        '200':
+          description: 更新后对象
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Room' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 非法状态迁移
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: ROOM_STATUS_INVALID, message: 房态不允许该迁移（VACANT_CLEAN → DISABLED 需管理员） }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # ---------------------------------------------------------------- guests
+  /guests:
+    get:
+      tags: [guests]
+      operationId: listGuests
+      summary: 客人档案列表（G1）
+      x-requirement-id: FR-GS-001
+      x-test-ids: [TC-GS-001, TC-GS-002]
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - { name: keyword, in: query, schema: { type: string, maxLength: 50 }, description: 姓名模糊/手机号前缀 }
+        - { name: phone, in: query, schema: { type: string, maxLength: 20 } }
+        - { name: sort, in: query, schema: { type: string, default: 'createdAt:desc' }, description: '白名单: createdAt,name' }
+      responses:
+        '200':
+          description: 分页客人档案（证件号恒掩码）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Guest' }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
+    post:
+      tags: [guests]
+      operationId: createGuest
+      summary: 创建客人档案（G2）；证件查重，明文证件号仅存在于请求与密文存储
+      x-requirement-id: FR-GS-002
+      x-test-ids: [TC-GS-003, TC-GS-004, TC-GS-005, TC-SEC-010]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GuestRequest' }
+            example: { name: 张三, phone: '13800138000', idType: ID_CARD, idNumber: '110101199001011234', remark: VIP 常客 }
+      responses:
+        '200':
+          description: 创建成功（返回掩码）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Guest' }
+              example:
+                data: { id: 9, name: 张三, phone: '13800138000', idType: ID_CARD, idNumberMasked: '1***********4', remark: VIP 常客, createdAt: '2026-10-14T06:00:00.000Z' }
+        '409':
+          description: 证件号已有档案（返回 existingGuestId）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error:
+                  code: GUEST_EXISTS
+                  message: 该证件号已有客人档案
+                  details: [ { field: idNumber, message: 'existingGuestId: 7' } ]
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /guests/{id}:
+    get:
+      tags: [guests]
+      operationId: getGuest
+      summary: 客人详情（G3）
+      x-requirement-id: FR-GS-003
+      x-test-ids: [TC-GS-006, TC-GS-007, TC-SEC-006]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      responses:
+        '200':
+          description: 客人详情（含近期预订摘要）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/GuestDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [guests]
+      operationId: updateGuest
+      summary: 更新客人档案（G4）；证件号不可修改
+      x-requirement-id: FR-GS-004
+      x-test-ids: [TC-GS-008, TC-GS-009]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateGuestRequest' }
+            example: { phone: '13900139000', remark: 已更新联系方式 }
+      responses:
+        '200':
+          description: 更新后对象
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Guest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 试图修改证件号
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: GUEST_EXISTS, message: 证件号不可修改，如需变更请新建档案 }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # ---------------------------------------------------------------- bookings
+  /bookings:
+    get:
+      tags: [bookings]
+      operationId: listBookings
+      summary: 预订列表（B2）
+      x-requirement-id: FR-BK-002
+      x-test-ids: [TC-BK-006, TC-BK-007]
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/BookingStatus' } }
+        - { name: guestId, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: checkInDateFrom, in: query, schema: { type: string, format: date } }
+        - { name: checkInDateTo, in: query, schema: { type: string, format: date } }
+        - { name: checkOutDateFrom, in: query, schema: { type: string, format: date }, description: '★ 增量参数（需评审追认）：退房日期范围起' }
+        - { name: checkOutDateTo, in: query, schema: { type: string, format: date }, description: '★ 增量参数（需评审追认）：退房日期范围止' }
+        - { name: keyword, in: query, schema: { type: string, maxLength: 50 }, description: 客人姓名/手机号 }
+        - { name: sort, in: query, schema: { type: string, default: 'createdAt:desc' }, description: '白名单: createdAt,checkInDate,status' }
+      responses:
+        '200':
+          description: 分页预订
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Booking' }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
+    post:
+      tags: [bookings]
+      operationId: createBooking
+      summary: 创建预订（B1）；事务内房型行锁+重叠计数防超售
+      x-requirement-id: FR-BK-001
+      x-test-ids: [TC-BK-001, TC-BK-002, TC-BK-003, TC-BK-004, TC-BK-005]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateBookingRequest' }
+            example: { guestId: 9, roomTypeId: 1, checkInDate: '2026-10-15', checkOutDate: '2026-10-17', pricePerNight: 288.00, note: 高楼层 }
+      responses:
+        '200':
+          description: 创建成功（价格已快照）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Booking' }
+              example:
+                data:
+                  id: 301
+                  guestId: 9
+                  guestName: 张三
+                  guestPhone: '13800138000'
+                  roomTypeId: 1
+                  roomTypeName: 标准大床房
+                  checkInDate: '2026-10-15'
+                  checkOutDate: '2026-10-17'
+                  roomCount: 1
+                  pricePerNight: 288.00
+                  totalPrice: 576.00
+                  status: CONFIRMED
+                  note: 高楼层
+                  createdAt: '2026-10-14T06:10:00.000Z'
+                  updatedAt: '2026-10-14T06:10:00.000Z'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 房量不足 / 房型归档
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error:
+                  code: ROOM_TYPE_SOLD_OUT
+                  message: 10-15 至 10-17 该房型已无可售房间
+                  details: [ { field: checkOutDate, message: '剩余可售: 0' } ]
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /bookings/{id}:
+    get:
+      tags: [bookings]
+      operationId: getBooking
+      summary: 预订详情（B3）；已入住预订含 stayId
+      x-requirement-id: FR-BK-003
+      x-test-ids: [TC-BK-008, TC-BK-009, TC-BK-010]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      responses:
+        '200':
+          description: 预订详情
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/BookingDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /bookings/{id}/cancel:
+    post:
+      tags: [bookings]
+      operationId: cancelBooking
+      summary: 取消预订（B4）；仅 CONFIRMED，事务内释放房量
+      x-requirement-id: FR-BK-004
+      x-test-ids: [TC-BK-011, TC-BK-012, TC-BK-013]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 200 }
+            example: { reason: 客人行程变更 }
+      responses:
+        '200':
+          description: 取消成功，返回更新后预订（含 cancelledAt/cancelReason）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/BookingDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 非 CONFIRMED 状态
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: BOOKING_STATUS_INVALID, message: 仅已确认预订可取消 }
+
+  /bookings/{id}/no-show:
+    post:
+      tags: [bookings]
+      operationId: markNoShow
+      summary: 标记预订未到（B5）；释放房量
+      x-requirement-id: FR-BK-005
+      x-test-ids: [TC-BK-014, TC-BK-015]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      responses:
+        '200':
+          description: 标记成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/BookingDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 非 CONFIRMED 状态
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: BOOKING_STATUS_INVALID, message: 仅已确认预订可标记未到 }
+
+  /bookings/{id}/check-in:
+    post:
+      tags: [bookings, stays]
+      operationId: checkInBooking
+      summary: 预订办理入住（B6）；房间行锁+占用表唯一约束防同房双占用、防重复办理
+      x-requirement-id: FR-BK-006
+      x-test-ids: [TC-BK-016, TC-BK-017, TC-BK-018, TC-BK-019, TC-BK-020, TC-BK-021]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckInRequest' }
+            example: { roomId: 12, depositAmount: 200.00 }
+      responses:
+        '200':
+          description: 入住成功，返回入住记录
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Stay' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 房间占用/房态非法/日期不符/重复办理
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                roomOccupied:
+                  value:
+                    error: { code: ROOM_OCCUPIED, message: 该房间在所选日期已被占用 }
+                roomNotAssignable:
+                  value:
+                    error: { code: ROOM_NOT_ASSIGNABLE, message: 房间处于维修或停用状态，不可分配 }
+                dateMismatch:
+                  value:
+                    error: { code: BOOKING_DATE_MISMATCH, message: 入住/离店日期与预订不符 }
+                bookingInvalid:
+                  value:
+                    error: { code: BOOKING_STATUS_INVALID, message: 该预订已办理入住或已取消 }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # ---------------------------------------------------------------- stays
+  /stays:
+    get:
+      tags: [stays]
+      operationId: listStays
+      summary: 入住列表（S2）
+      x-requirement-id: FR-SY-002
+      x-test-ids: [TC-SY-005, TC-SY-006]
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/StayStatus' } }
+        - { name: roomId, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: keyword, in: query, schema: { type: string, maxLength: 50 }, description: 客人姓名/手机号 }
+        - { name: sort, in: query, schema: { type: string, default: 'checkInAt:desc' }, description: '白名单: checkInAt,expectedCheckOutDate,status' }
+      responses:
+        '200':
+          description: 分页入住记录
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/Stay' }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
+    post:
+      tags: [stays]
+      operationId: createStay
+      summary: 直接入住 walk-in（S1）；与 B6 共用核心逻辑
+      x-requirement-id: FR-SY-001
+      x-test-ids: [TC-SY-001, TC-SY-002, TC-SY-003, TC-SY-004]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateStayRequest' }
+            example: { guestId: 9, roomId: 13, pricePerNight: 318.00, expectedCheckOutDate: '2026-10-16', depositAmount: 300.00, note: 深夜到店 }
+      responses:
+        '200':
+          description: 入住成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Stay' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 房间占用/房态非法
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: ROOM_OCCUPIED, message: 该房间在所选日期已被占用 }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /stays/{id}:
+    get:
+      tags: [stays]
+      operationId: getStay
+      summary: 入住详情（S3）；含实时费用累计与订单摘要
+      x-requirement-id: FR-SY-003
+      x-test-ids: [TC-SY-007, TC-SY-008]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      responses:
+        '200':
+          description: 入住详情
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/StayDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /stays/{id}/checkout:
+    post:
+      tags: [stays, orders]
+      operationId: checkoutStay
+      summary: 退房结算（S4）；事务：生成订单+房态 VACANT_DIRTY+释放占用，防重复结算
+      x-requirement-id: FR-SY-004
+      x-test-ids: [TC-SY-009, TC-SY-010, TC-SY-011, TC-SY-012, TC-SY-013]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckoutRequest' }
+            example:
+              paymentMethod: WECHAT
+              miscItems: [ { name: 迷你吧消费, amount: 38.00 } ]
+              note: 客人对房费无异议
+      responses:
+        '200':
+          description: 结算成功，返回订单
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Order' }
+              example:
+                data:
+                  id: 900
+                  stayId: 501
+                  status: PAID
+                  items:
+                    - { type: ROOM_FEE, name: 房费 2 晚 × 288.00, amount: 576.00 }
+                    - { type: MISC, name: 迷你吧消费, amount: 38.00 }
+                    - { type: DEPOSIT_APPLIED, name: 押金抵扣, amount: 200.00 }
+                  totalAmount: 614.00
+                  depositAmount: 200.00
+                  depositApplied: 200.00
+                  paidAmount: 414.00
+                  paymentMethod: WECHAT
+                  note: 客人对房费无异议
+                  createdAt: '2026-10-17T04:30:00.000Z'
+                  updatedAt: '2026-10-17T04:30:00.000Z'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 已退房不可重复结算
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                error: { code: STAY_STATUS_INVALID, message: 该入住记录已退房，不可重复结算 }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # ---------------------------------------------------------------- orders
+  /orders:
+    get:
+      tags: [orders]
+      operationId: listOrders
+      summary: 订单列表（O1）
+      x-requirement-id: FR-OD-001
+      x-test-ids: [TC-OD-001]
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - { name: stayId, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: createdFrom, in: query, schema: { type: string, format: date } }
+        - { name: createdTo, in: query, schema: { type: string, format: date } }
+        - { name: sort, in: query, schema: { type: string, default: 'createdAt:desc' }, description: '白名单: createdAt' }
+      responses:
+        '200':
+          description: 分页订单
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/OrderListItem' }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
+
+  /orders/{id}:
+    get:
+      tags: [orders]
+      operationId: getOrder
+      summary: 订单详情（O2）
+      x-requirement-id: FR-OD-002
+      x-test-ids: [TC-OD-002, TC-OD-003]
+      parameters: [{ $ref: '#/components/parameters/idInPath' }]
+      responses:
+        '200':
+          description: 订单详情（含费用明细）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Order' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+# =====================================================================
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: hms_sid
+      description: 服务器端会话（HttpOnly; SameSite=Strict; Secure=生产），登录后由服务端 Set-Cookie 下发
+
+  parameters:
+    idInPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    pageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    Unauthorized:
+      description: 未认证/会话过期/凭证错误
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: SESSION_EXPIRED, message: 会话已过期，请重新登录 }
+    Forbidden:
+      description: 已认证但角色不满足
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: FORBIDDEN, message: 无权限执行该操作 }
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: NOT_FOUND, message: 资源不存在 }
+    ValidationError:
+      description: 参数校验失败（details 必有）
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error:
+              code: VALIDATION_FAILED
+              message: 参数校验失败
+              details: [ { field: checkOutDate, message: 必须晚于入住日期 } ]
+    InternalError:
+      description: 服务器内部错误（响应头含 X-Request-Id）
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: INTERNAL_ERROR, message: 服务异常，请稍后重试 }
+
+  schemas:
+    # ---------------- common
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: 业务错误码，注册表见 docs/api-contract.md §1.5
+            message:
+              type: string
+            details:
+              type: array
+              items: { $ref: '#/components/schemas/ErrorDetail' }
+    ErrorDetail:
+      type: object
+      properties:
+        field: { type: string }
+        message: { type: string }
+    Pagination:
+      type: object
+      required: [page, pageSize, total, totalPages]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+    OkResult:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          properties:
+            ok: { type: boolean }
+
+    # ---------------- enums
+    Role:
+      type: string
+      enum: [ADMIN, RECEPTIONIST]
+    UserStatus:
+      type: string
+      enum: [ACTIVE, DISABLED]
+    RoomTypeStatus:
+      type: string
+      enum: [ACTIVE, ARCHIVED]
+    RoomStatus:
+      type: string
+      enum: [VACANT_CLEAN, VACANT_DIRTY, OCCUPIED, MAINTENANCE, DISABLED]
+    IdType:
+      type: string
+      enum: [ID_CARD, PASSPORT, OTHER]
+    BookingStatus:
+      type: string
+      enum: [CONFIRMED, CHECKED_IN, CANCELLED, NO_SHOW]
+    StayStatus:
+      type: string
+      enum: [CHECKED_IN, CHECKED_OUT]
+    OrderStatus:
+      type: string
+      enum: [UNPAID, PAID]
+    OrderItemType:
+      type: string
+      enum: [ROOM_FEE, MISC, DEPOSIT_APPLIED]
+    PaymentMethod:
+      type: string
+      enum: [CASH, WECHAT, ALIPAY, BANK_CARD, MIXED]
+
+    # ---------------- auth / users
+    SessionUser:
+      type: object
+      required: [id, username, displayName, role]
+      properties:
+        id: { type: integer }
+        username: { type: string }
+        displayName: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, pattern: '^[a-zA-Z0-9_]{3,50}$' }
+        password: { type: string, minLength: 1, maxLength: 72 }
+    CreateUserRequest:
+      type: object
+      required: [username, password, displayName, role]
+      properties:
+        username: { type: string, pattern: '^[a-zA-Z0-9_]{3,50}$' }
+        password: { type: string, minLength: 10, maxLength: 72, description: 至少含字母与数字 }
+        displayName: { type: string, minLength: 1, maxLength: 50 }
+        role: { $ref: '#/components/schemas/Role' }
+    UpdateUserRequest:
+      type: object
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 50 }
+        role: { $ref: '#/components/schemas/Role' }
+        status: { $ref: '#/components/schemas/UserStatus' }
+    ResetPasswordRequest:
+      type: object
+      required: [newPassword]
+      properties:
+        newPassword: { type: string, minLength: 10, maxLength: 72 }
+    UserListItem:
+      type: object
+      required: [id, username, displayName, role, status, createdAt]
+      properties:
+        id: { type: integer }
+        username: { type: string }
+        displayName: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        status: { $ref: '#/components/schemas/UserStatus' }
+        lastLoginAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    # ---------------- room types / rooms
+    RoomType:
+      type: object
+      required: [id, code, name, basePrice, capacity, status, roomCount, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        code: { type: string, pattern: '^[A-Z0-9]{2,20}$' }
+        name: { type: string }
+        basePrice: { type: number, minimum: 0, maximum: 99999.99 }
+        capacity: { type: integer, minimum: 1, maximum: 20 }
+        description: { type: string, nullable: true, maxLength: 500 }
+        status: { $ref: '#/components/schemas/RoomTypeStatus' }
+        roomCount: { type: integer, description: 未停用房间数 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    RoomTypeRequest:
+      type: object
+      required: [code, name, basePrice, capacity]
+      properties:
+        code: { type: string, pattern: '^[A-Z0-9]{2,20}$' }
+        name: { type: string, minLength: 1, maxLength: 50 }
+        basePrice: { type: number, minimum: 0, maximum: 99999.99 }
+        capacity: { type: integer, minimum: 1, maximum: 20 }
+        description: { type: string, maxLength: 500 }
+    RoomTypeUpdateRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 50 }
+        basePrice: { type: number, minimum: 0, maximum: 99999.99 }
+        capacity: { type: integer, minimum: 1, maximum: 20 }
+        description: { type: string, maxLength: 500 }
+    CurrentStay:
+      type: object
+      required: [stayId, guestName, checkInAt, expectedCheckOutDate]
+      properties:
+        stayId: { type: integer }
+        guestName: { type: string }
+        checkInAt: { type: string, format: date-time }
+        expectedCheckOutDate: { type: string, format: date }
+    Room:
+      type: object
+      required: [id, roomNumber, roomTypeId, roomTypeName, status, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        roomNumber: { type: string }
+        roomTypeId: { type: integer }
+        roomTypeName: { type: string }
+        status: { $ref: '#/components/schemas/RoomStatus' }
+        note: { type: string, nullable: true, maxLength: 200 }
+        currentStay:
+          type: object
+          allOf: [ { $ref: '#/components/schemas/CurrentStay' } ]
+          nullable: true
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreateRoomRequest:
+      type: object
+      required: [roomNumber, roomTypeId]
+      properties:
+        roomNumber: { type: string, minLength: 1, maxLength: 20 }
+        roomTypeId: { type: integer, minimum: 1 }
+        note: { type: string, maxLength: 200 }
+    UpdateRoomRequest:
+      type: object
+      properties:
+        roomNumber: { type: string, minLength: 1, maxLength: 20 }
+        roomTypeId: { type: integer, minimum: 1 }
+        note: { type: string, maxLength: 200 }
+    AvailableRoom:
+      type: object
+      required: [id, roomNumber, status]
+      properties:
+        id: { type: integer }
+        roomNumber: { type: string }
+        status: { $ref: '#/components/schemas/RoomStatus' }
+
+    # ---------------- guests
+    Guest:
+      type: object
+      required: [id, name, phone, idType, idNumberMasked, createdAt]
+      properties:
+        id: { type: integer }
+        name: { type: string, maxLength: 100 }
+        phone: { type: string, maxLength: 20 }
+        idType: { $ref: '#/components/schemas/IdType' }
+        idNumberMasked: { type: string, description: 掩码（前1后1），明文永不返回 }
+        remark: { type: string, nullable: true, maxLength: 500 }
+        createdAt: { type: string, format: date-time }
+    GuestRequest:
+      type: object
+      required: [name, phone, idType, idNumber]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        phone: { type: string, description: '大陆手机号或 6-20 位国际号码' }
+        idType: { $ref: '#/components/schemas/IdType' }
+        idNumber: { type: string, pattern: '^[A-Za-z0-9]{5,30}$' }
+        remark: { type: string, maxLength: 500 }
+    UpdateGuestRequest:
+      type: object
+      description: 'idType/idNumber 仅用于识别"试图修改证件号"，服务端返回 409 GUEST_EXISTS（证件号不可修改）'
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        phone: { type: string }
+        remark: { type: string, maxLength: 500 }
+        idType: { $ref: '#/components/schemas/IdType' }
+        idNumber: { type: string, pattern: '^[A-Za-z0-9]{5,30}$' }
+    GuestDetail:
+      allOf:
+        - $ref: '#/components/schemas/Guest'
+        - type: object
+          properties:
+            updatedAt: { type: string, format: date-time }
+            recentBookings:
+              type: array
+              description: 最近 10 条预订摘要
+              items:
+                type: object
+                properties:
+                  id: { type: integer }
+                  checkInDate: { type: string, format: date }
+                  checkOutDate: { type: string, format: date }
+                  status: { $ref: '#/components/schemas/BookingStatus' }
+
+    # ---------------- bookings
+    Booking:
+      type: object
+      required: [id, guestId, guestName, roomTypeId, roomTypeName, checkInDate, checkOutDate, roomCount, pricePerNight, totalPrice, status, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        guestId: { type: integer }
+        guestName: { type: string }
+        guestPhone: { type: string, nullable: true }
+        roomTypeId: { type: integer }
+        roomTypeName: { type: string }
+        checkInDate: { type: string, format: date }
+        checkOutDate: { type: string, format: date }
+        roomCount: { type: integer, minimum: 1, description: 本期恒为 1（假设 A-04） }
+        pricePerNight: { type: number }
+        totalPrice: { type: number }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        note: { type: string, nullable: true, maxLength: 500 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    BookingDetail:
+      description: 预订详情/取消/未到响应：Booking 的超集
+      allOf:
+        - $ref: '#/components/schemas/Booking'
+        - type: object
+          properties:
+            stayId: { type: integer, nullable: true, description: 已入住时非空 }
+            cancelledAt: { type: string, format: date-time, nullable: true }
+            cancelReason: { type: string, nullable: true }
+    CreateBookingRequest:
+      type: object
+      required: [guestId, roomTypeId, checkInDate, checkOutDate]
+      properties:
+        guestId: { type: integer, minimum: 1 }
+        roomTypeId: { type: integer, minimum: 1 }
+        checkInDate: { type: string, format: date, description: ≥ 今日（酒店本地日） }
+        checkOutDate: { type: string, format: date, description: 必须晚于 checkInDate }
+        pricePerNight: { type: number, minimum: 0.01, maximum: 99999.99, nullable: true, description: 缺省取房型 base_price 快照 }
+        note: { type: string, maxLength: 500 }
+    CheckInRequest:
+      type: object
+      required: [roomId]
+      properties:
+        roomId: { type: integer, minimum: 1 }
+        depositAmount: { type: number, minimum: 0, maximum: 99999.99, default: 0 }
+        pricePerNight: { type: number, minimum: 0.01, maximum: 99999.99, nullable: true, description: 缺省取预订价 }
+
+    # ---------------- stays
+    Stay:
+      type: object
+      required: [id, bookingId, guestId, guestName, roomId, roomNumber, roomTypeId, roomTypeName, pricePerNight, checkInAt, expectedCheckOutDate, depositAmount, status, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        bookingId: { type: integer, nullable: true, description: walk-in 为 null }
+        guestId: { type: integer }
+        guestName: { type: string }
+        roomId: { type: integer }
+        roomNumber: { type: string }
+        roomTypeId: { type: integer }
+        roomTypeName: { type: string }
+        pricePerNight: { type: number }
+        checkInAt: { type: string, format: date-time }
+        expectedCheckOutDate: { type: string, format: date }
+        depositAmount: { type: number }
+        status: { $ref: '#/components/schemas/StayStatus' }
+        note: { type: string, nullable: true, maxLength: 500 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreateStayRequest:
+      type: object
+      required: [guestId, roomId, pricePerNight, expectedCheckOutDate]
+      properties:
+        guestId: { type: integer, minimum: 1 }
+        roomId: { type: integer, minimum: 1 }
+        pricePerNight: { type: number, minimum: 0.01, maximum: 99999.99 }
+        expectedCheckOutDate: { type: string, format: date, description: 必须晚于今日 }
+        depositAmount: { type: number, minimum: 0, maximum: 99999.99, default: 0 }
+        note: { type: string, maxLength: 500 }
+    CurrentCharges:
+      type: object
+      required: [roomFee, miscTotal, total, nights]
+      properties:
+        roomFee: { type: number }
+        miscTotal: { type: number, description: 在住期间为 0（杂费退房录入，假设 A-19） }
+        total: { type: number }
+        nights: { type: integer, description: 预计晚数 }
+    StayDetail:
+      allOf:
+        - $ref: '#/components/schemas/Stay'
+        - type: object
+          properties:
+            actualCheckOutAt: { type: string, format: date-time, nullable: true }
+            currentCharges: { $ref: '#/components/schemas/CurrentCharges' }
+            order:
+              type: object
+              nullable: true
+              allOf:
+                - $ref: '#/components/schemas/OrderListItem'
+              description: 退房后非空
+    CheckoutRequest:
+      type: object
+      required: [paymentMethod]
+      properties:
+        paymentMethod: { $ref: '#/components/schemas/PaymentMethod' }
+        miscItems:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [name, amount]
+            properties:
+              name: { type: string, minLength: 1, maxLength: 100 }
+              amount: { type: number, minimum: 0.01, maximum: 99999.99 }
+        note: { type: string, maxLength: 500 }
+
+    # ---------------- orders
+    OrderItem:
+      type: object
+      required: [type, name, amount]
+      properties:
+        type: { $ref: '#/components/schemas/OrderItemType' }
+        name: { type: string }
+        amount: { type: number, description: 恒为正数 }
+    Order:
+      type: object
+      required: [id, stayId, status, items, totalAmount, depositAmount, depositApplied, paidAmount, paymentMethod, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        stayId: { type: integer }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OrderItem' }
+        totalAmount: { type: number, description: SUM(ROOM_FEE + MISC) }
+        depositAmount: { type: number }
+        depositApplied: { type: number, description: 'min(depositAmount, totalAmount)' }
+        paidAmount: { type: number, description: totalAmount - depositApplied }
+        paymentMethod: { $ref: '#/components/schemas/PaymentMethod' }
+        note: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    OrderListItem:
+      type: object
+      required: [id, stayId, guestName, roomNumber, totalAmount, paidAmount, paymentMethod, status, createdAt]
+      properties:
+        id: { type: integer }
+        stayId: { type: integer }
+        guestName: { type: string }
+        roomNumber: { type: string }
+        totalAmount: { type: number }
+        paidAmount: { type: number }
+        paymentMethod: { $ref: '#/components/schemas/PaymentMethod' }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        createdAt: { type: string, format: date-time }

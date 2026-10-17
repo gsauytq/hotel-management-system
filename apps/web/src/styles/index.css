@@ -1,0 +1,35 @@
+:root {
+  --hms-sidebar-width: 240px;
+  --hms-sidebar-collapsed-width: 64px;
+  --hms-header-height: 56px;
+  --hms-page-padding: 20px;
+  --hms-page-gap: 16px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial,
+    sans-serif;
+  background: var(--el-bg-color-page);
+  color: var(--el-text-color-primary);
+}
+
+@media (max-width: 768px) {
+  :root {
+    --hms-page-padding: 12px;
+    --hms-page-gap: 12px;
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@hms/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "HMS 前后端共享契约包（类型/枚举/错误码；无运行时副作用，无构建产物，source 直引，见架构 ADR-004）",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.4"
+  }
+}

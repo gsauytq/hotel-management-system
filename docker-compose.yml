@@ -1,0 +1,33 @@
+# 开发用 Compose：仅 MySQL 8.4 LTS（api / web 在宿主机以 pnpm dev 运行）
+# 使用：cp .env.example .env（替换占位值）→ docker compose up -d mysql
+# 注意：宿主端口默认 3307，避免与本机既有 MySQL 服务冲突。
+
+name: hms-dev
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-hotel}
+      MYSQL_USER: ${MYSQL_USER:-hms_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env 中设置 MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+    ports:
+      - '${MYSQL_HOST_PORT:-3307}:3306'
+    volumes:
+      - hms_mysql_dev_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+volumes:
+  hms_mysql_dev_data:

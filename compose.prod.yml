@@ -1,0 +1,118 @@
+# 生产形态 Compose：web(Nginx) + api(Node/Express) + mysql(8.4 LTS)
+# 使用：cp .env.example .env（替换全部占位值）→ docker compose -f compose.prod.yml up -d --build
+#
+# 数据库初始化与迁移执行方式（database-design.md §7）：
+#   - api 容器启动命令为 `prisma migrate deploy && tsx src/main.ts`，
+#     只应用 prisma/migrations 中未执行的迁移（幂等）；迁移失败容器不启动（fail fast）。
+#   - 管理员种子（一次性工具服务，不影响常驻 api 进程的环境变量）：
+#       docker compose -f compose.prod.yml --profile tools run --rm seed
+#     seed 仅当 users 表为空时执行，密码来自 ADMIN_INITIAL_PASSWORD，绝不硬编码。
+#   - mysql 不映射宿主端口，仅 compose 内网可达。
+
+name: hms-prod
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-hotel}
+      MYSQL_USER: ${MYSQL_USER:-hms_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env 中设置 MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+    volumes:
+      - hms_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - hms
+
+  api:
+    image: hms-prod-api:latest
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      # 运行库使用最小权限应用账号；迁移使用 root（DDL 账号，security-design §6）
+      DATABASE_URL: mysql://${MYSQL_USER:-hms_app}:${MYSQL_PASSWORD:?}@mysql:3306/${MYSQL_DATABASE:-hotel}
+      MIGRATION_DATABASE_URL: mysql://root:${MYSQL_ROOT_PASSWORD:?}@mysql:3306/${MYSQL_DATABASE:-hotel}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-8}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      GUEST_ID_HMAC_KEY: ${GUEST_ID_HMAC_KEY:?请在 .env 中设置 GUEST_ID_HMAC_KEY}
+      GUEST_ID_CIPHER_KEY: ${GUEST_ID_CIPHER_KEY:?请在 .env 中设置 GUEST_ID_CIPHER_KEY}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - hms
+
+  seed:
+    # 一次性初始化工具：docker compose -f compose.prod.yml --profile tools run --rm seed
+    image: hms-prod-api:latest
+    profiles:
+      - tools
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://${MYSQL_USER:-hms_app}:${MYSQL_PASSWORD:?}@mysql:3306/${MYSQL_DATABASE:-hotel}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-8}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      GUEST_ID_HMAC_KEY: ${GUEST_ID_HMAC_KEY:?请在 .env 中设置 GUEST_ID_HMAC_KEY}
+      GUEST_ID_CIPHER_KEY: ${GUEST_ID_CIPHER_KEY:?请在 .env 中设置 GUEST_ID_CIPHER_KEY}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
+    command: ['./node_modules/.bin/tsx', 'prisma/seed.ts']
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - hms
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    ports:
+      # 生产如置于 TLS 终结器之后可改为 80:80；默认 8080 便于本地验收
+      - '${WEB_HTTP_PORT:-8080}:80'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1/']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks:
+      - hms
+
+networks:
+  hms:
+    driver: bridge
+
+volumes:
+  hms_mysql_data:

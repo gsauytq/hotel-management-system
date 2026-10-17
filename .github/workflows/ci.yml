@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-and-unit:
+    name: 静态检查 + 单元测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+
+      - name: 启用 pnpm（锁定版本）
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.6.0 --activate
+          pnpm --version
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: 类型检查
+        run: pnpm typecheck
+
+      - name: 格式检查
+        run: pnpm format:check
+
+      - name: 单元测试（默认排除集成）
+        run: pnpm -r test
+
+      - name: OpenAPI 契约 lint
+        run: npx --yes @redocly/cli@2.64.1 lint openapi/openapi.yaml
+
+      - name: 禁止未参数化 SQL
+        run: |
+          if grep -rInE '\$(queryRawUnsafe|executeRawUnsafe)' apps/server/src packages/shared/src; then
+            echo '发现 $queryRawUnsafe/$executeRawUnsafe：违反 security-design §6' >&2
+            exit 1
+          fi
+
+  integration:
+    name: 集成测试（真实 MySQL + 并发）
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci_root_password
+          MYSQL_DATABASE: hotel
+          MYSQL_USER: hms_app
+          MYSQL_PASSWORD: ci_app_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci_root_password --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+          --default-time-zone=+08:00
+    env:
+      # 仅 CI 测试环境使用的固定值，不得用于任何真实环境
+      DATABASE_URL: mysql://hms_app:ci_app_password@127.0.0.1:3306/hotel
+      MIGRATION_DATABASE_URL: mysql://root:ci_root_password@127.0.0.1:3306/hotel
+      NODE_ENV: test
+      LOG_LEVEL: silent
+      SESSION_TTL_HOURS: '8'
+      GUEST_ID_HMAC_KEY: BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+      GUEST_ID_CIPHER_KEY: BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+
+      - name: 启用 pnpm（锁定版本）
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.6.0 --activate
+          pnpm --version
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 生成 Prisma Client
+        run: pnpm --filter @hms/server db:generate
+
+      - name: 应用数据库迁移（含手写 CHECK 约束）
+        run: pnpm --filter @hms/server exec prisma migrate deploy
+
+      - name: 集成测试（缺库即失败，不允许静默跳过）
+        run: |
+          test -n "${DATABASE_URL}"
+          pnpm --filter @hms/server test:integration
+
+  secret-scan:
+    name: 密钥扫描
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # E2E（Playwright）待 e2e/ 包落地后新增独立 job：
+  # 依赖 TC-E2E-001~008，执行前需 docker compose -f compose.prod.yml up -d --build 并使用干净数据卷。

@@ -1,0 +1,266 @@
+// HMS 数据库结构（Prisma 7，schema 为唯一事实来源，见架构 ADR-003）
+//
+// 全部业务表按 database-design.md 落库（T-02）：
+// users / sessions / room_types / rooms / guests / bookings / stays /
+// room_occupancy / orders / order_items。
+// Prisma 不支持 CHECK 约束与 utf8mb4_0900_ai_ci：由迁移 SQL 手工补充（database-design §7）。
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id             BigInt     @id @default(autoincrement()) @db.UnsignedBigInt
+  username       String     @unique(map: "uq_users_username") @db.VarChar(50)
+  passwordHash   String     @map("password_hash") @db.VarChar(100)
+  displayName    String     @map("display_name") @db.VarChar(50)
+  role           UserRole
+  status         UserStatus @default(ACTIVE)
+  failedAttempts Int        @default(0) @map("failed_attempts")
+  lockedUntil    DateTime?  @map("locked_until") @db.DateTime(3)
+  lastLoginAt    DateTime?  @map("last_login_at") @db.DateTime(3)
+  createdAt      DateTime   @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+  sessions       Session[]
+  bookings       Booking[]
+  stays          Stay[]
+  orders         Order[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @db.Char(64)
+  userId    BigInt   @map("user_id") @db.UnsignedBigInt
+  expiresAt DateTime @map("expires_at") @db.DateTime(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt], map: "idx_sessions_expires")
+  @@index([userId], map: "idx_sessions_user")
+  @@map("sessions")
+}
+
+model RoomType {
+  id          BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String         @unique(map: "uq_room_types_code") @db.VarChar(20)
+  name        String         @db.VarChar(50)
+  basePrice   Decimal        @map("base_price") @db.Decimal(10, 2)
+  capacity    Int            @db.UnsignedTinyInt
+  description String?        @db.VarChar(500)
+  status      RoomTypeStatus @default(ACTIVE)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+  rooms       Room[]
+  bookings    Booking[]
+  stays       Stay[]
+
+  @@map("room_types")
+}
+
+model Room {
+  id         BigInt     @id @default(autoincrement()) @db.UnsignedBigInt
+  roomNumber String     @unique(map: "uq_rooms_room_number") @map("room_number") @db.VarChar(20)
+  roomTypeId BigInt     @map("room_type_id") @db.UnsignedBigInt
+  status     RoomStatus @default(VACANT_DIRTY)
+  note       String?    @db.VarChar(200)
+  createdAt  DateTime   @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+  roomType   RoomType   @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  stays      Stay[]
+  occupancy  RoomOccupancy[]
+
+  @@index([roomTypeId, status], map: "idx_rooms_type")
+  @@map("rooms")
+}
+
+model Guest {
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  name           String   @db.VarChar(100)
+  phone          String   @db.VarChar(20)
+  idType         IdType   @map("id_type")
+  idNumberHash   String   @map("id_number_hash") @db.Char(64)
+  idNumberCipher Bytes    @map("id_number_cipher") @db.VarBinary(255)
+  remark         String?  @db.VarChar(500)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  bookings       Booking[]
+  stays          Stay[]
+
+  @@unique([idType, idNumberHash], map: "uq_guests_id_number")
+  @@index([name], map: "idx_guests_name")
+  @@index([phone], map: "idx_guests_phone")
+  @@map("guests")
+}
+
+model Booking {
+  id            BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  guestId       BigInt        @map("guest_id") @db.UnsignedBigInt
+  roomTypeId    BigInt        @map("room_type_id") @db.UnsignedBigInt
+  checkInDate   DateTime      @map("check_in_date") @db.Date
+  checkOutDate  DateTime      @map("check_out_date") @db.Date
+  roomCount     Int           @default(1) @map("room_count") @db.UnsignedTinyInt
+  pricePerNight Decimal       @map("price_per_night") @db.Decimal(10, 2)
+  totalPrice    Decimal       @map("total_price") @db.Decimal(10, 2)
+  status        BookingStatus @default(CONFIRMED)
+  note          String?       @db.VarChar(500)
+  createdBy     BigInt        @map("created_by") @db.UnsignedBigInt
+  cancelledAt   DateTime?     @map("cancelled_at") @db.DateTime(3)
+  cancelReason  String?       @map("cancel_reason") @db.VarChar(200)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+  guest         Guest         @relation(fields: [guestId], references: [id], onDelete: Restrict)
+  roomType      RoomType      @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  createdByUser User          @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  stay          Stay?
+
+  @@index([roomTypeId, status, checkInDate, checkOutDate], map: "idx_bookings_capacity")
+  @@index([guestId], map: "idx_bookings_guest")
+  @@index([checkInDate, status], map: "idx_bookings_checkin")
+  @@map("bookings")
+}
+
+model Stay {
+  id                   BigInt          @id @default(autoincrement()) @db.UnsignedBigInt
+  bookingId            BigInt?         @unique(map: "uq_bookings_booking_stay") @map("booking_id") @db.UnsignedBigInt
+  guestId              BigInt          @map("guest_id") @db.UnsignedBigInt
+  roomId               BigInt          @map("room_id") @db.UnsignedBigInt
+  roomTypeId           BigInt          @map("room_type_id") @db.UnsignedBigInt
+  pricePerNight        Decimal         @map("price_per_night") @db.Decimal(10, 2)
+  checkInAt            DateTime        @map("check_in_at") @db.DateTime(3)
+  expectedCheckOutDate DateTime        @map("expected_check_out_date") @db.Date
+  actualCheckOutAt     DateTime?       @map("actual_check_out_at") @db.DateTime(3)
+  depositAmount        Decimal         @default(0) @map("deposit_amount") @db.Decimal(10, 2)
+  status               StayStatus      @default(CHECKED_IN)
+  note                 String?         @db.VarChar(500)
+  createdBy            BigInt          @map("created_by") @db.UnsignedBigInt
+  createdAt            DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
+  booking              Booking?        @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  guest                Guest           @relation(fields: [guestId], references: [id], onDelete: Restrict)
+  room                 Room            @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  roomType             RoomType        @relation(fields: [roomTypeId], references: [id], onDelete: Restrict)
+  createdByUser        User            @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  order                Order?
+  occupancy            RoomOccupancy[]
+
+  @@index([roomId, status], map: "idx_stays_room")
+  @@index([guestId], map: "idx_stays_guest")
+  @@index([status, expectedCheckOutDate], map: "idx_stays_status_checkout")
+  @@map("stays")
+}
+
+model RoomOccupancy {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  stayId    BigInt   @map("stay_id") @db.UnsignedBigInt
+  roomId    BigInt   @map("room_id") @db.UnsignedBigInt
+  date      DateTime @db.Date
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  stay      Stay     @relation(fields: [stayId], references: [id], onDelete: Cascade)
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Restrict)
+
+  @@unique([roomId, date], map: "uq_occupancy_room_date")
+  @@index([stayId], map: "idx_occupancy_stay")
+  @@map("room_occupancy")
+}
+
+model Order {
+  id             BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  stayId         BigInt        @unique(map: "uq_orders_stay") @map("stay_id") @db.UnsignedBigInt
+  totalAmount    Decimal       @map("total_amount") @db.Decimal(10, 2)
+  depositAmount  Decimal       @default(0) @map("deposit_amount") @db.Decimal(10, 2)
+  depositApplied Decimal       @default(0) @map("deposit_applied") @db.Decimal(10, 2)
+  paidAmount     Decimal       @map("paid_amount") @db.Decimal(10, 2)
+  paymentMethod  PaymentMethod @map("payment_method")
+  status         OrderStatus   @default(PAID)
+  note           String?       @db.VarChar(500)
+  createdBy      BigInt        @map("created_by") @db.UnsignedBigInt
+  createdAt      DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+  stay           Stay          @relation(fields: [stayId], references: [id], onDelete: Restrict)
+  createdByUser  User          @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  items          OrderItem[]
+
+  @@index([createdAt], map: "idx_orders_created")
+  @@map("orders")
+}
+
+model OrderItem {
+  id        BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  orderId   BigInt        @map("order_id") @db.UnsignedBigInt
+  type      OrderItemType
+  name      String        @db.VarChar(100)
+  amount    Decimal       @db.Decimal(10, 2)
+  createdAt DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  order     Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId], map: "idx_items_order")
+  @@map("order_items")
+}
+
+enum UserRole {
+  ADMIN
+  RECEPTIONIST
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum RoomTypeStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum RoomStatus {
+  VACANT_CLEAN
+  VACANT_DIRTY
+  OCCUPIED
+  MAINTENANCE
+  DISABLED
+}
+
+enum IdType {
+  ID_CARD
+  PASSPORT
+  OTHER
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CHECKED_IN
+  CANCELLED
+  NO_SHOW
+}
+
+enum StayStatus {
+  CHECKED_IN
+  CHECKED_OUT
+}
+
+enum OrderStatus {
+  UNPAID
+  PAID
+}
+
+enum OrderItemType {
+  ROOM_FEE
+  MISC
+  DEPOSIT_APPLIED
+}
+
+enum PaymentMethod {
+  CASH
+  WECHAT
+  ALIPAY
+  BANK_CARD
+  MIXED
+}
