@@ -408,6 +408,8 @@ docker compose -f compose.prod.yml --profile tools run --rm seed   # 可选：�
 - 安全：`docs/security-design.md`
 - 开发计划：`docs/development-plan.md`
 - 生产部署与运维：`docs/deployment.md`
+- PII 合规检查单（Q-08 B，待签字）：`docs/pii-compliance-checklist.md`
+- TLS 上线检查单（Q-09 A，待签字）：`docs/tls-launch-checklist.md`
 - 需求追踪（批准前历史）：`docs/requirements-traceability.md`
 - 已批准需求基线：`docs/requirements-traceability-approval-draft.md`
 - 业务假设决议：`docs/business-assumptions-decision-list.md`
