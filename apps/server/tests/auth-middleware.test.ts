@@ -24,6 +24,7 @@ const activeUser: CurrentUser = {
   displayName: '王小雅',
   role: 'RECEPTIONIST',
   status: 'ACTIVE',
+  mustChangePassword: false,
 };
 
 function buildApp(resolveSession: (sessionId: string) => Promise<SessionResolution>) {
@@ -86,6 +87,18 @@ describe('会话中间件 + requireAuth（未登录/无效/过期/停用区分�
     expect(res.body.data.user).toEqual(activeUser);
     expect(res.body.data.sessionId).toBe('a'.repeat(64));
   });
+
+  it('首登未改密访问业务端点 → 403 PASSWORD_CHANGE_REQUIRED', async () => {
+    const app = buildApp(async () => ({
+      status: 'active',
+      user: { ...activeUser, mustChangePassword: true },
+      sessionId: 'e'.repeat(64),
+      expiresAt: new Date(Date.now() + 60_000),
+    }));
+    const res = await request(app).get('/protected').set('Cookie', 'hms_sid=valid');
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+  });
 });
 
 describe('requireRole（后端唯一权限边界，默认拒绝）', () => {
@@ -118,6 +131,18 @@ describe('requireRole（后端唯一权限边界，默认拒绝）', () => {
     const res = await request(app).get('/admin-only').set('Cookie', 'hms_sid=valid');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ data: { ok: true } });
+  });
+
+  it('首登未改密时 requireRole 也拒绝 → 403 PASSWORD_CHANGE_REQUIRED', async () => {
+    const app = buildApp(async () => ({
+      status: 'active',
+      user: { ...activeUser, role: 'ADMIN', mustChangePassword: true },
+      sessionId: 'f'.repeat(64),
+      expiresAt: new Date(Date.now() + 60_000),
+    }));
+    const res = await request(app).get('/admin-only').set('Cookie', 'hms_sid=valid');
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
   });
 });
 

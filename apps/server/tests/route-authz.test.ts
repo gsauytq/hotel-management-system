@@ -73,6 +73,7 @@ function activeUser(role: Role): CurrentUser {
     displayName: role === 'ADMIN' ? '管理员' : '前台',
     role,
     status: 'ACTIVE',
+    mustChangePassword: false,
   };
 }
 

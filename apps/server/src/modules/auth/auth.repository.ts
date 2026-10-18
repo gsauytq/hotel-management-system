@@ -8,6 +8,7 @@ export interface UserRecord {
   displayName: string;
   role: Role;
   status: UserStatus;
+  mustChangePassword: boolean;
   passwordHash: string;
   failedAttempts: number;
   lockedUntil: Date | null;
@@ -46,6 +47,12 @@ export interface CompleteLoginParams {
 
 export interface AuthRepository {
   findUserByUsername(username: string): Promise<UserRecord | null>;
+  findUserById(id: number): Promise<UserRecord | null>;
+  /** 更新密码、清除首登标记，并使该用户全部会话失效（同一事务） */
+  updatePasswordAndInvalidateSessions(params: {
+    userId: number;
+    passwordHash: string;
+  }): Promise<void>;
   recordFailedLogin(params: RecordFailedLoginParams): Promise<RecordFailedLoginResult>;
   /** 事务：清零失败计数/锁定、更新 last_login_at、写入新会话并裁剪超限会话 */
   completeLogin(params: CompleteLoginParams): Promise<void>;
@@ -60,6 +67,7 @@ interface UserRow {
   displayName: string;
   role: Role;
   status: UserStatus;
+  mustChangePassword: boolean;
   passwordHash: string;
   failedAttempts: number;
   lockedUntil: Date | null;
@@ -72,6 +80,7 @@ function mapUser(row: UserRow): UserRecord {
     displayName: row.displayName,
     role: row.role,
     status: row.status,
+    mustChangePassword: row.mustChangePassword,
     passwordHash: row.passwordHash,
     failedAttempts: row.failedAttempts,
     lockedUntil: row.lockedUntil,
@@ -83,6 +92,26 @@ export function createAuthRepository(prisma: PrismaClient): AuthRepository {
     async findUserByUsername(username) {
       const user = await prisma.user.findUnique({ where: { username } });
       return user === null ? null : mapUser(user);
+    },
+
+    async findUserById(id) {
+      const user = await prisma.user.findUnique({ where: { id: BigInt(id) } });
+      return user === null ? null : mapUser(user);
+    },
+
+    async updatePasswordAndInvalidateSessions({ userId, passwordHash }) {
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: BigInt(userId) },
+          data: {
+            passwordHash,
+            mustChangePassword: false,
+            failedAttempts: 0,
+            lockedUntil: null,
+          },
+        });
+        await tx.session.deleteMany({ where: { userId: BigInt(userId) } });
+      });
     },
 
     async recordFailedLogin({

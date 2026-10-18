@@ -53,7 +53,7 @@
 | 200 | 成功（含业务读） | — |
 | 400 | 请求体畸形（非 JSON 等） | INVALID_BODY |
 | 401 | 未认证 / 会话过期 / 凭证错误 | SESSION_EXPIRED、INVALID_CREDENTIALS |
-| 403 | 已认证但无权限 | FORBIDDEN |
+| 403 | 已认证但无权限 | FORBIDDEN、PASSWORD_CHANGE_REQUIRED |
 | 404 | 资源不存在 | NOT_FOUND |
 | 409 | 业务冲突 / 状态机非法 / 唯一冲突 | ROOM_TYPE_SOLD_OUT、ROOM_OCCUPIED、BOOKING_STATUS_INVALID、DUPLICATE_USERNAME、GUEST_EXISTS |
 | 422 | 参数校验失败 | VALIDATION_FAILED（details 必有） |
@@ -71,6 +71,7 @@
 | ACCOUNT_LOCKED | 423 | 连续失败锁定中 |
 | RATE_LIMITED | 429 | 登录尝试过于频繁（每 IP 每分钟 10 次，security-design §3） |
 | FORBIDDEN | 403 | 角色不满足 |
+| PASSWORD_CHANGE_REQUIRED | 403 | 首登未改密，仅允许 me/logout/change-password（A-20 B） |
 | NOT_FOUND | 404 | 资源不存在 |
 | VALIDATION_FAILED | 422 | 参数校验失败 |
 | DUPLICATE_USERNAME | 409 | 员工用户名已存在 |
@@ -96,6 +97,7 @@
 | A1 | POST /auth/login | 公开 | FR-AUTH-001 | TC-AUTH |
 | A2 | POST /auth/logout | 登录 | FR-AUTH-002 | TC-AUTH |
 | A3 | GET /auth/me | 登录 | FR-AUTH-003 | TC-AUTH |
+| A4 | POST /auth/change-password | 登录 | A-20 B | TC-AUTH |
 | U1 | GET /users | ADMIN | FR-USER-001 | TC-USER |
 | U2 | POST /users | ADMIN | FR-USER-002 | TC-USER |
 | U3 | PATCH /users/{id} | ADMIN | FR-USER-003 | TC-USER |
@@ -150,7 +152,7 @@
 成功 `200`（`Set-Cookie: hms_sid=...; HttpOnly; SameSite=Strict; Path=/`）：
 
 ```json
-{ "data": { "id": 2, "username": "front01", "displayName": "王小雅", "role": "RECEPTIONIST" } }
+{ "data": { "id": 2, "username": "front01", "displayName": "王小雅", "role": "RECEPTIONIST", "mustChangePassword": false } }
 ```
 
 错误 `401`：
@@ -181,7 +183,22 @@
 
 | 角色 | 已登录 | 需求 | FR-AUTH-003 | 测试 | TC-AUTH-006 刷新页面后重建会话 |
 
-成功 `200`：同 A1 `data` 结构（另含 `status`）。错误：`401 SESSION_EXPIRED`（前端据此跳登录）。
+成功 `200`：同 A1 `data` 结构（另含 `status`、`mustChangePassword`）。错误：`401 SESSION_EXPIRED`（前端据此跳登录）。
+
+### A4 自助改密 `POST /auth/change-password`（A-20 B）
+
+| 角色 | 已登录 | 需求 | A-20 B | 测试 | 首登未改密 → 403；改密后会话/旧密码失效；新密码可登录 |
+
+请求体：
+
+```json
+{ "currentPassword": "Old#Pass1234", "newPassword": "New#Pass5678" }
+```
+
+- 校验：当前密码必须正确；新密码 ≥10 位、≤72 字节、含字母与数字、不得包含用户名、不得与当前密码相同。
+- 成功 `200`：`{ "data": { "ok": true } }`；服务端清除 `must_change_password` 并删除该用户全部 sessions，前端应重新登录。
+- 错误：`422 VALIDATION_FAILED`（字段 `currentPassword`/`newPassword`）、`401 SESSION_EXPIRED`。
+- 首登未改密期间，除 `GET /auth/me`、`POST /auth/logout`、本端点外，受保护 API 返回 `403 PASSWORD_CHANGE_REQUIRED`。
 
 ---
 

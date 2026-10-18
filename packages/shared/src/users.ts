@@ -48,6 +48,16 @@ export const resetPasswordSchema = z.strictObject({
   newPassword: userPasswordSchema,
 });
 
+/** A4 自助改密（A-20 B；与管理员重置不同，需要当前密码） */
+export const changePasswordSchema = z.strictObject({
+  currentPassword: z
+    .string()
+    .min(1, '当前密码不能为空')
+    .refine((value) => utf8ByteLength(value) <= 72, '密码长度不得超过 72 字节（bcrypt 上限）'),
+  newPassword: userPasswordSchema,
+});
+
 export type CreateUserRequest = z.infer<typeof createUserSchema>;
 export type UpdateUserRequest = z.infer<typeof updateUserSchema>;
 export type ResetPasswordRequest = z.infer<typeof resetPasswordSchema>;
+export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>;

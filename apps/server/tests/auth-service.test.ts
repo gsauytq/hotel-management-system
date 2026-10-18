@@ -4,7 +4,7 @@ import type { AuthRepository, UserRecord } from '../src/modules/auth/auth.reposi
 import { createAuthService } from '../src/modules/auth/auth.service.js';
 import type { RequestContext } from '../src/shared/http/auth.js';
 import type { AuditEvent, AuditLogger } from '../src/utils/audit.js';
-import { hashPassword } from '../src/utils/password.js';
+import { hashPassword, verifyPassword } from '../src/utils/password.js';
 
 const PASSWORD = 'Correct#12345';
 const passwordHash = await hashPassword(PASSWORD);
@@ -19,6 +19,7 @@ function makeUser(overrides: Partial<UserRecord> = {}): UserRecord {
     displayName: '王小雅',
     role: 'RECEPTIONIST',
     status: 'ACTIVE',
+    mustChangePassword: false,
     passwordHash,
     failedAttempts: 0,
     lockedUntil: null,
@@ -29,6 +30,9 @@ function makeUser(overrides: Partial<UserRecord> = {}): UserRecord {
 function createRepositoryMock() {
   return {
     findUserByUsername: vi.fn<AuthRepository['findUserByUsername']>(),
+    findUserById: vi.fn<AuthRepository['findUserById']>(),
+    updatePasswordAndInvalidateSessions:
+      vi.fn<AuthRepository['updatePasswordAndInvalidateSessions']>(),
     recordFailedLogin: vi.fn<AuthRepository['recordFailedLogin']>(),
     completeLogin: vi.fn<AuthRepository['completeLogin']>(),
     findSessionWithUser: vi.fn<AuthRepository['findSessionWithUser']>(),
@@ -68,6 +72,7 @@ describe('auth.service 登录（TC-AUTH 语义）', () => {
       username: 'front01',
       displayName: '王小雅',
       role: 'RECEPTIONIST',
+      mustChangePassword: false,
     });
     expect(result.sessionId).toMatch(/^[0-9a-f]{64}$/);
     expect(result.expiresAt.getTime()).toBe(fixedNow.getTime() + 8 * 60 * 60 * 1000);
@@ -173,6 +178,78 @@ describe('auth.service 登录（TC-AUTH 语义）', () => {
       reason: 'user_disabled',
       actorId: 1,
     });
+  });
+});
+
+describe('auth.service 自助改密（A-20 B）', () => {
+  const changeContext = { ...context, actorId: 1, username: 'front01' };
+
+  it('当前密码正确：更新哈希、清除首登标记并使全部会话失效', async () => {
+    const { repository, audit, service } = buildService();
+    repository.findUserById.mockResolvedValue(makeUser({ mustChangePassword: true }));
+    repository.updatePasswordAndInvalidateSessions.mockResolvedValue(undefined);
+
+    await service.changePassword(
+      { currentPassword: PASSWORD, newPassword: 'New#Pass12345' },
+      changeContext,
+    );
+
+    expect(repository.updatePasswordAndInvalidateSessions).toHaveBeenCalledTimes(1);
+    const [params] = repository.updatePasswordAndInvalidateSessions.mock.calls[0]!;
+    expect(params.userId).toBe(1);
+    await expect(verifyPassword('New#Pass12345', params.passwordHash)).resolves.toBe(true);
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'auth.change_password', outcome: 'SUCCESS' }),
+    );
+    expect(JSON.stringify(audit.mock.calls)).not.toContain('New#Pass12345');
+  });
+
+  it('当前密码错误：422 字段错误、不更新密码、写失败审计', async () => {
+    const { repository, audit, service } = buildService();
+    repository.findUserById.mockResolvedValue(makeUser({ mustChangePassword: true }));
+
+    await expect(
+      service.changePassword(
+        { currentPassword: 'Wrong#Pass123', newPassword: 'New#Pass12345' },
+        changeContext,
+      ),
+    ).rejects.toMatchObject({
+      status: 422,
+      details: [{ field: 'currentPassword', message: '当前密码不正确' }],
+    });
+
+    expect(repository.updatePasswordAndInvalidateSessions).not.toHaveBeenCalled();
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'auth.change_password',
+        outcome: 'FAILURE',
+        reason: 'invalid_current_password',
+      }),
+    );
+  });
+
+  it('新密码包含用户名或与当前密码相同：拒绝更新', async () => {
+    const { repository, service } = buildService();
+    repository.findUserById.mockResolvedValue(makeUser({ mustChangePassword: true }));
+
+    await expect(
+      service.changePassword(
+        { currentPassword: PASSWORD, newPassword: 'Front01#Pass123' },
+        changeContext,
+      ),
+    ).rejects.toMatchObject({
+      status: 422,
+      details: [{ field: 'newPassword', message: '密码不得包含用户名' }],
+    });
+
+    await expect(
+      service.changePassword({ currentPassword: PASSWORD, newPassword: PASSWORD }, changeContext),
+    ).rejects.toMatchObject({
+      status: 422,
+      details: [{ field: 'newPassword', message: '新密码不能与当前密码相同' }],
+    });
+
+    expect(repository.updatePasswordAndInvalidateSessions).not.toHaveBeenCalled();
   });
 });
 

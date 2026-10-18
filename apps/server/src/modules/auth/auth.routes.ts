@@ -1,6 +1,6 @@
 import { Router, type RequestHandler } from 'express';
 
-import { loginRequestSchema } from '@hms/shared';
+import { changePasswordSchema, loginRequestSchema } from '@hms/shared';
 
 import type { AppConfig } from '../../config/env.js';
 import { requireAuth } from '../../shared/middleware/requireAuth.js';
@@ -45,6 +45,14 @@ export function createAuthRouter(deps: AuthRouterDependencies): Router {
   router.post('/logout', deps.sessionMiddleware, requireAuth, controller.logout);
   // A3 当前用户（认证）
   router.get('/me', deps.sessionMiddleware, requireAuth, controller.me);
+  // A4 自助改密（认证；首登强制改密期间仍允许）
+  router.post(
+    '/change-password',
+    deps.sessionMiddleware,
+    requireAuth,
+    validate({ body: changePasswordSchema }),
+    controller.changePassword,
+  );
 
   return router;
 }

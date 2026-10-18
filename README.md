@@ -2,7 +2,7 @@
 
 小型酒店管理系统（模块化单体）。后端业务模块（认证、员工、客房、客人、预订、入住/退房、订单）已实现；前端已完成**工程基础设施、管理后台布局、登录认证、房型/客房、预订、入住/退房、账单、员工与客人管理页面**。经营看板因统计接口与口径仍为 V2 范围外，仅提供明确的未接入页面，不展示 Mock 指标。
 
-> **需求基线**：v1.0 已于 2026-10-18 批准（[批准工作稿](./docs/requirements-traceability-approval-draft.md) / [决策摘要](./docs/requirements-approval-decision-summary.md)）。walk-in 前端入口、A-20 首登强制改密、E2E 与部署文档仍待完成，见[批准后行动登记](./docs/post-approval-action-register.md)。
+> **需求基线**：v1.0 已于 2026-10-18 批准（[批准工作稿](./docs/requirements-traceability-approval-draft.md) / [决策摘要](./docs/requirements-approval-decision-summary.md)）。A-20 B 首登强制改密已实现；walk-in 前端入口、E2E 与部署文档仍待完成，见[批准后行动登记](./docs/post-approval-action-register.md)。
 
 ## 技术栈
 
@@ -108,7 +108,8 @@ node -e "console.log(require('node:crypto').randomBytes(24).toString('base64url'
 - **密码**：bcrypt cost=12（`bcryptjs`），不保存明文/可逆值；用户不存在时执行等效 dummy 比较防时序探测。
 - **登录防护**：连续失败 5 次锁定 15 分钟（第 6 次起返回 423）；每 IP 每分钟 10 次限流（429 + `Retry-After`）。
 - **授权**：`sessionMiddleware → requireAuth（401）→ requireRole(...roles)（403）`，路由必须显式声明角色（默认拒绝）；后续业务模块（T-06+）在路由上挂载 `requireRole('ADMIN')` 等守卫，前端隐藏按钮不构成权限控制。
-- **审计日志**：登录成功/失败/锁定、登出写入 `channel: audit` 结构化日志（含 requestId、结果、原因），绝不记录密码、哈希、Cookie/会话 id（pino redact）。
+- **首登强制改密（A-20 B）**：新 seed 管理员 `mustChangePassword=true`；登录与 `/auth/me` 返回该标记；未改密时仅放行 me/logout/change-password，其他受保护 API 返回 `403 PASSWORD_CHANGE_REQUIRED`；前端强制跳转 `/change-password`，改密成功后全部会话失效并要求重新登录。
+- **审计日志**：登录成功/失败/锁定、登出、改密写入 `channel: audit` 结构化日志（含 requestId、结果、原因），绝不记录密码、哈希、Cookie/会话 id（pino redact）。
 
 ## 房型与客房（T-07）
 
@@ -368,7 +369,8 @@ pnpm --filter @hms/web check     # typecheck + lint + format:check + test
 - 单元测试不依赖真实数据库（数据库探测与仓储通过依赖注入替换）；真实数据库行为用 `docker compose up -d mysql` + `curl http://localhost:3000/api/health` 冒烟验证（停库应返回 503，恢复后返回 200）。
 - 集成测试（Supertest + 真实 MySQL）默认跳过，需显式启用：`docker compose up -d mysql` 后运行
   `HMS_INTEGRATION=1 pnpm --filter @hms/server test`（测试数据以 `itest_`/随机后缀创建并自动清理）。
-- CI（2026-10-18 实际结果）：`static-and-unit`、`integration`、`secret-scan` 三个 job 全绿；单元测试 318（shared 37 + server 146 + web 135），integration job 249 passed / 35 files（含 server 单测与真库用例）。E2E 仍未实现。
+- A-20 B 测试覆盖：后端改密成功/当前密码错误/策略拒绝/首登 gate/旧会话与旧密码失效；前端强制改密页、守卫、登录跳转。当前单元测试 330（shared 37 + server 151 + web 142）。
+- CI 基线（2026-10-18）：`static-and-unit`、`integration`、`secret-scan` 三个 job 全绿；A-20 变更以最新 `main` CI 运行为准；integration job 255 passed / 35 files（含 server 单测与真库用例）。E2E 仍未实现。
 
 ## 生产形态部署
 
@@ -381,7 +383,8 @@ docker compose -f compose.prod.yml --profile tools run --rm seed   # 可选：�
 - `api` 容器启动时自动执行 `prisma migrate deploy`（只应用未执行迁移，幂等；失败则容器不启动）。
 - 迁移采用前滚策略，禁止手工改生产库结构（详见 `docs/database-design.md` §7）。
 - MySQL 不映射宿主端口，仅 Compose 内网可达。
-- **生产上线门禁**：Q-09 A（TLS/域名、`Secure`/HSTS）与 Q-08 B（PII 合规/保留期评审）必须先完成；A-20 B（首登强制改密）已批准但**尚未实现**，上线前必须补齐。
+- **生产上线门禁**：Q-09 A（TLS/域名、`Secure`/HSTS）与 Q-08 B（PII 合规/保留期评审）必须先完成；A-20 B（首登强制改密）已实现。
+- **首次 seed 后**：新管理员首次登录必须修改初始密码。部署冒烟如遇 `mustChangePassword=true`，需提供 `HMS_SMOKE_NEW_PASSWORD` 执行一次改密，或先人工改密。
 
 ## 故障排查
 

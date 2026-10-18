@@ -29,12 +29,11 @@ async function main(): Promise<void> {
         passwordHash,
         displayName: '系统管理员',
         role: 'ADMIN',
+        mustChangePassword: true,
       },
     });
     console.info('已创建初始管理员账号 admin（密码来自 ADMIN_INITIAL_PASSWORD，bcrypt cost=12）');
-    console.info(
-      'A-20 B 首登强制改密已批准但尚未实现；请部署后立即人工轮换初始密码，直至该安全任务完成',
-    );
+    console.info('首次登录必须修改初始密码（A-20 B）后才能访问业务接口');
   } finally {
     await prisma.$disconnect();
   }

@@ -93,7 +93,11 @@ integrationSuite('认证与授权集成测试（Supertest + 真实 MySQL）', ()
 
   async function createTestUser(
     suffix: string,
-    options: { role?: 'ADMIN' | 'RECEPTIONIST'; status?: 'ACTIVE' | 'DISABLED' } = {},
+    options: {
+      role?: 'ADMIN' | 'RECEPTIONIST';
+      status?: 'ACTIVE' | 'DISABLED';
+      mustChangePassword?: boolean;
+    } = {},
   ): Promise<{ id: number; username: string }> {
     const user = await prisma.user.create({
       data: {
@@ -102,6 +106,7 @@ integrationSuite('认证与授权集成测试（Supertest + 真实 MySQL）', ()
         displayName: '集成测试用户',
         role: options.role ?? 'RECEPTIONIST',
         status: options.status ?? 'ACTIVE',
+        mustChangePassword: options.mustChangePassword ?? false,
       },
     });
     return { id: Number(user.id), username: user.username };
@@ -138,6 +143,7 @@ integrationSuite('认证与授权集成测试（Supertest + 真实 MySQL）', ()
       username: user.username,
       displayName: '集成测试用户',
       role: 'RECEPTIONIST',
+      mustChangePassword: false,
     });
     expect(res.body.data).not.toHaveProperty('passwordHash');
 
@@ -274,6 +280,7 @@ integrationSuite('认证与授权集成测试（Supertest + 真实 MySQL）', ()
       displayName: '集成测试用户',
       role: 'RECEPTIONIST',
       status: 'ACTIVE',
+      mustChangePassword: false,
     });
     expect(JSON.stringify(me.body)).not.toContain('passwordHash');
   });
@@ -310,6 +317,63 @@ integrationSuite('认证与授权集成测试（Supertest + 真实 MySQL）', ()
 
     const after = await request(app).get('/api/v1/auth/me').set('Cookie', cookie);
     expect(after.status).toBe(401);
+  });
+
+  it('A-20 B 首登强制改密：业务端点 403，改密后旧会话/旧密码失效', async () => {
+    const user = await createTestUser('must_change', { mustChangePassword: true });
+    const sessionMiddleware = createSessionMiddleware({
+      cookieName: SESSION_COOKIE_NAME,
+      resolveSession: (sid) => authService.resolveSession(sid),
+      logger: silentLogger(),
+    });
+    const app = buildApp({
+      extendApi: (router) => {
+        router.get('/__itest__/protected', sessionMiddleware, requireAuth, (_req, res) => {
+          res.json({ data: { ok: true } });
+        });
+      },
+    });
+
+    const firstLogin = await login(app, user.username);
+    expect(firstLogin.status).toBe(200);
+    expect(firstLogin.body.data.mustChangePassword).toBe(true);
+    const cookie = `${SESSION_COOKIE_NAME}=${sessionCookieValue(firstLogin)}`;
+
+    const blocked = await request(app).get('/api/v1/__itest__/protected').set('Cookie', cookie);
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+
+    const me = await request(app).get('/api/v1/auth/me').set('Cookie', cookie);
+    expect(me.status).toBe(200);
+    expect(me.body.data.mustChangePassword).toBe(true);
+
+    const wrongCurrent = await request(app)
+      .post('/api/v1/auth/change-password')
+      .set('Cookie', cookie)
+      .send({ currentPassword: 'Wrong#Pass123', newPassword: 'New#Pass12345' });
+    expect(wrongCurrent.status).toBe(422);
+    expect(wrongCurrent.body.error.details).toEqual([
+      { field: 'currentPassword', message: '当前密码不正确' },
+    ]);
+
+    const changed = await request(app)
+      .post('/api/v1/auth/change-password')
+      .set('Cookie', cookie)
+      .send({ currentPassword: plainPassword, newPassword: 'New#Pass12345' });
+    expect(changed.status).toBe(200);
+    expect(changed.body).toEqual({ data: { ok: true } });
+
+    await expect(prisma.session.count({ where: { userId: BigInt(user.id) } })).resolves.toBe(0);
+    const oldSession = await request(app).get('/api/v1/auth/me').set('Cookie', cookie);
+    expect(oldSession.status).toBe(401);
+    expect((await login(app, user.username)).status).toBe(401);
+
+    const newLogin = await login(app, user.username, 'New#Pass12345');
+    expect(newLogin.status).toBe(200);
+    expect(newLogin.body.data.mustChangePassword).toBe(false);
+    const newCookie = `${SESSION_COOKIE_NAME}=${sessionCookieValue(newLogin)}`;
+    const allowed = await request(app).get('/api/v1/__itest__/protected').set('Cookie', newCookie);
+    expect(allowed.status).toBe(200);
   });
 
   it('越权：RECEPTIONIST 直调 ADMIN 路由 → 403；ADMIN → 200；未登录 → 401', async () => {

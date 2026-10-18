@@ -57,6 +57,7 @@ async function mountView() {
     username: 'admin',
     displayName: '管理员',
     role: 'ADMIN',
+    mustChangePassword: false,
   };
   authStore.booted = true;
 

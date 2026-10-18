@@ -42,6 +42,8 @@ export interface SessionUser {
   username: string;
   displayName: string;
   role: Role;
+  /** A-20 B：为 true 时仅允许 me/logout/change-password，其他受保护接口返回 403 */
+  mustChangePassword: boolean;
 }
 
 /** GET /auth/me 响应：会话用户 + 账号状态（api-contract A3） */

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-import type { CurrentUser, LoginRequest, SessionUser } from '@hms/shared';
+import type { ChangePasswordRequest, CurrentUser, LoginRequest, SessionUser } from '@hms/shared';
 
 import { ApiError } from '../../shared/http/ApiError.js';
 import type { RequestContext, SessionResolution } from '../../shared/http/auth.js';
@@ -24,9 +24,13 @@ export interface LogoutContext extends RequestContext {
   username: string;
 }
 
+export type ChangePasswordContext = LogoutContext;
+
 export interface AuthService {
   login(input: LoginRequest, context: RequestContext): Promise<LoginResult>;
   logout(sessionId: string, context: LogoutContext): Promise<void>;
+  /** A4 自助改密：校验当前密码，更新哈希，清除首登标记并使全部会话失效 */
+  changePassword(input: ChangePasswordRequest, context: ChangePasswordContext): Promise<void>;
   resolveSession(sessionId: string): Promise<SessionResolution>;
   cleanupExpiredSessions(): Promise<number>;
 }
@@ -44,6 +48,7 @@ function toSessionUser(user: UserRecord): SessionUser {
     username: user.username,
     displayName: user.displayName,
     role: user.role,
+    mustChangePassword: user.mustChangePassword,
   };
 }
 
@@ -54,6 +59,14 @@ function toCurrentUser(user: UserRecord): CurrentUser {
 /** 统一文案：不区分“用户不存在”与“密码错误”，防枚举（security-design §3） */
 function invalidCredentials(): ApiError {
   return ApiError.fromCode('INVALID_CREDENTIALS', '用户名或密码错误');
+}
+
+function assertPasswordExcludesUsername(password: string, username: string): void {
+  if (password.toLowerCase().includes(username.toLowerCase())) {
+    throw ApiError.validation('参数校验失败', [
+      { field: 'newPassword', message: '密码不得包含用户名' },
+    ]);
+  }
 }
 
 export function createAuthService(deps: AuthServiceDependencies): AuthService {
@@ -157,6 +170,50 @@ export function createAuthService(deps: AuthServiceDependencies): AuthService {
       await deps.repository.deleteSession(sessionId);
       deps.audit({
         action: 'auth.logout',
+        outcome: 'SUCCESS',
+        requestId: context.requestId,
+        ip: context.ip,
+        actorId: context.actorId,
+        target: context.username,
+      });
+    },
+
+    async changePassword(input, context) {
+      const user = await deps.repository.findUserById(context.actorId);
+      if (user === null) {
+        throw ApiError.unauthorized();
+      }
+
+      const currentMatches = await verifyPassword(input.currentPassword, user.passwordHash);
+      if (!currentMatches) {
+        deps.audit({
+          action: 'auth.change_password',
+          outcome: 'FAILURE',
+          requestId: context.requestId,
+          ip: context.ip,
+          actorId: context.actorId,
+          target: context.username,
+          reason: 'invalid_current_password',
+        });
+        throw ApiError.validation('当前密码不正确', [
+          { field: 'currentPassword', message: '当前密码不正确' },
+        ]);
+      }
+
+      if (input.currentPassword === input.newPassword) {
+        throw ApiError.validation('参数校验失败', [
+          { field: 'newPassword', message: '新密码不能与当前密码相同' },
+        ]);
+      }
+      assertPasswordExcludesUsername(input.newPassword, user.username);
+
+      const passwordHash = await hashPassword(input.newPassword);
+      await deps.repository.updatePasswordAndInvalidateSessions({
+        userId: user.id,
+        passwordHash,
+      });
+      deps.audit({
+        action: 'auth.change_password',
         outcome: 'SUCCESS',
         requestId: context.requestId,
         ip: context.ip,

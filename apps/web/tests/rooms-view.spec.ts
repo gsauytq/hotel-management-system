@@ -83,6 +83,7 @@ async function mountView(role: 'ADMIN' | 'RECEPTIONIST') {
     username: role === 'ADMIN' ? 'admin' : 'front01',
     displayName: role === 'ADMIN' ? '管理员' : '前台',
     role,
+    mustChangePassword: false,
   };
   authStore.booted = true;
 

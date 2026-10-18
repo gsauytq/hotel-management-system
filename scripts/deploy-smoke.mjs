@@ -2,23 +2,29 @@
 /**
  * 部署后冒烟（docs/test-plan.md §7-15、TC-DEP-005）。
  *
- * 只读检查，不写入任何业务数据：
+ * 默认只读检查，不写入业务数据：
  *   1) GET /api/health            → { status: "ok" }
  *   2) POST /api/v1/auth/login    → 200 + HttpOnly 会话 Cookie
  *   3) GET /api/v1/auth/me        → 200 且用户名匹配
  *   4) GET /api/v1/room-types     → 200 列表信封 + X-Request-Id
  *   5) GET /api/v1/rooms          → 200 列表信封
  *
+ * A-20 B：新 seed 管理员首登必须改密。若登录返回 mustChangePassword=true：
+ *   - 提供 HMS_SMOKE_NEW_PASSWORD 时，执行一次改密并以新密码重新登录；
+ *   - 未提供时明确失败，不进行后续只读检查。
+ *
  * 环境变量：
- *   HMS_SMOKE_BASE_URL  默认 http://127.0.0.1:8080（compose.prod 的 web 端口）
- *   HMS_SMOKE_USERNAME  默认 admin
- *   HMS_SMOKE_PASSWORD  必填（或回退 ADMIN_INITIAL_PASSWORD）
+ *   HMS_SMOKE_BASE_URL      默认 http://127.0.0.1:8080（compose.prod 的 web 端口）
+ *   HMS_SMOKE_USERNAME      默认 admin
+ *   HMS_SMOKE_PASSWORD      必填（或回退 ADMIN_INITIAL_PASSWORD）
+ *   HMS_SMOKE_NEW_PASSWORD  可选；仅首登强制改密时需要
  *
  * 任一检查失败即以非 0 退出码结束。
  */
 const baseUrl = (process.env.HMS_SMOKE_BASE_URL ?? 'http://127.0.0.1:8080').replace(/\/$/, '');
 const username = process.env.HMS_SMOKE_USERNAME ?? 'admin';
 const password = process.env.HMS_SMOKE_PASSWORD ?? process.env.ADMIN_INITIAL_PASSWORD;
+const newPassword = process.env.HMS_SMOKE_NEW_PASSWORD;
 
 let failures = 0;
 
@@ -45,23 +51,53 @@ async function main() {
   check('health 200', health.status === 200, `status=${health.status}`);
   check('health status=ok', healthBody?.status === 'ok', JSON.stringify(healthBody));
 
-  const login = await fetch(`${baseUrl}/api/v1/auth/login`, {
+  let login = await fetch(`${baseUrl}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   });
-  const loginBody = await login.json().catch(() => null);
+  let loginBody = await login.json().catch(() => null);
   check(
     '登录 200',
     login.status === 200,
     `status=${login.status} body=${JSON.stringify(loginBody)}`,
   );
   check('登录返回用户', typeof loginBody?.data?.username === 'string');
-  const setCookie = login.headers.get('set-cookie') ?? '';
+  let setCookie = login.headers.get('set-cookie') ?? '';
   check('会话 Cookie 存在', /hms_sid=[0-9a-f]{64}/.test(setCookie));
   check('Cookie HttpOnly', /HttpOnly/i.test(setCookie));
   check('Cookie SameSite=Strict', /SameSite=Strict/i.test(setCookie));
-  const cookie = setCookie.split(',')[0]?.split(';')[0] ?? '';
+  let cookie = setCookie.split(',')[0]?.split(';')[0] ?? '';
+
+  if (loginBody?.data?.mustChangePassword === true) {
+    if (newPassword === undefined || newPassword === '') {
+      console.error('[FAIL] 首登强制改密：请设置 HMS_SMOKE_NEW_PASSWORD，或先人工完成改密后重跑');
+      process.exit(1);
+    }
+
+    const change = await fetch(`${baseUrl}/api/v1/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ currentPassword: password, newPassword }),
+    });
+    const changeBody = await change.json().catch(() => null);
+    check(
+      '首登改密 200',
+      change.status === 200,
+      `status=${change.status} body=${JSON.stringify(changeBody)}`,
+    );
+
+    login = await fetch(`${baseUrl}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password: newPassword }),
+    });
+    loginBody = await login.json().catch(() => null);
+    check('改密后重新登录 200', login.status === 200, `status=${login.status}`);
+    check('改密标记已清除', loginBody?.data?.mustChangePassword === false);
+    setCookie = login.headers.get('set-cookie') ?? '';
+    cookie = setCookie.split(',')[0]?.split(';')[0] ?? '';
+  }
 
   const me = await fetch(`${baseUrl}/api/v1/auth/me`, { headers: { Cookie: cookie } });
   const meBody = await me.json().catch(() => null);

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, Expand, Fold, SwitchButton } from '@element-plus/icons-vue';
+import { ArrowDown, Expand, Fold, Lock, SwitchButton } from '@element-plus/icons-vue';
 import { computed, onBeforeUnmount, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -46,6 +46,10 @@ function toggleSidebar(): void {
 }
 
 async function handleUserCommand(command: unknown): Promise<void> {
+  if (command === 'change-password') {
+    await router.push({ name: 'change-password' });
+    return;
+  }
   if (command !== 'logout') return;
   await authStore.logout();
   await router.replace({ name: 'login' });
@@ -137,6 +141,10 @@ onBeforeUnmount(() => {
             </button>
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item command="change-password">
+                  <el-icon><Lock /></el-icon>
+                  修改密码
+                </el-dropdown-item>
                 <el-dropdown-item command="logout">
                   <el-icon><SwitchButton /></el-icon>
                   退出登录
