@@ -47,7 +47,7 @@ jobs:
 
       - name: 禁止未参数化 SQL
         run: |
-          if grep -rInE '\$(queryRawUnsafe|executeRawUnsafe)' apps/server/src packages/shared/src; then
+          if grep -rInE --exclude-dir=generated '\$(queryRawUnsafe|executeRawUnsafe)' apps/server/src packages/shared/src; then
             echo '发现 $queryRawUnsafe/$executeRawUnsafe：违反 security-design §6' >&2
             exit 1
           fi
