@@ -14,8 +14,8 @@
 - [ ] 已复制 `.env.example` 为 `.env`，并替换全部 `REPLACE_*` 占位值。
 - [ ] `MYSQL_ROOT_PASSWORD`、`MYSQL_PASSWORD` 使用强随机值；`GUEST_ID_HMAC_KEY`、`GUEST_ID_CIPHER_KEY` 为 32 字节 base64。
 - [ ] `ADMIN_INITIAL_PASSWORD` ≥10 位且不含用户名；首次登录后必须修改（A-20 B）。
-- [ ] Q-09 A：域名与 TLS 证书就绪；边缘代理启用 HTTPS、HSTS，并只暴露 443（内部可回源 8080）。
-- [ ] Q-08 B：PII 合规、证件号保留期、掩码口径已形成书面结论。
+- [ ] Q-09 A：域名与 TLS 证书就绪；边缘代理启用 HTTPS、HSTS，并只暴露 443（内部可回源 8080）。检查单见 [`tls-launch-checklist.md`](./tls-launch-checklist.md)。
+- [ ] Q-08 B：PII 合规、证件号保留期、掩码口径已形成书面结论。检查单见 [`pii-compliance-checklist.md`](./pii-compliance-checklist.md)。
 - [ ] 已确认 `main` 分支保护与 CI 三项检查（静态/集成/密钥扫描）为合并门禁。
 
 ## 2. 首次部署
@@ -150,3 +150,4 @@ docker compose -f compose.prod.yml logs -f mysql
 - 数据库设计：[`database-design.md`](./database-design.md)
 - 测试计划：[`test-plan.md`](./test-plan.md)
 - 行动登记：[`post-approval-action-register.md`](./post-approval-action-register.md)
+
