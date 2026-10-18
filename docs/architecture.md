@@ -22,7 +22,7 @@ flowchart LR
     subgraph Compose["Docker Compose（单机部署）"]
         subgraph WebC["web 容器（Nginx）"]
             STATIC["静态资源托管（apps/web/dist）"]
-            PROXY["反向代理 /api/* → api:3000<br/>（同源，TLS 终结预留）"]
+            PROXY["Nginx 443 TLS / 80→301<br/>/api/* → api:3000（同源）"]
         end
         subgraph ApiC["api 容器（Node.js 22 LTS + Express + TS）"]
             MW["横切中间件链<br/>requestId / 日志 / session 解析 / CSRF 校验 / zod 校验 / 限流"]
@@ -405,9 +405,9 @@ export const http = axios.create({
 - **否决**：全 200 + body code（浪费 HTTP 语义）；每域自定义信封（漂移）。
 
 ### ADR-010 单机 Docker Compose（web/api/mysql 三容器）+ 前置 Nginx 同源反代
-- **决策**：Nginx 同时托管 SPA 静态资源与 `/api` 反代（单源），TLS 由宿主/外部 LB 终结（证书未提供，内网 HTTP 先行【待确认 Q-10】）。
+- **决策**：Nginx 同时托管 SPA 静态资源与 `/api` 反代（单源）；D2-a/b 下由 `web` 容器内 Nginx 终结 TLS（443），80 仅 301 跳转，证书通过 `TLS_CERT_DIR` 只读挂载。
 - **理由**：同源部署使 `SameSite=Strict` Cookie 与 Origin 校验的 CSRF 防线成立，免去跨域 Cookie 的 `SameSite=None; Secure` 依赖；协议指定 Compose 部署。
-- **代价**：单机无 HA（小酒店可接受）；TLS 上线需补证书与 HSTS 配置。
+- **代价**：单机无 HA（小酒店可接受）；生产需提供域名/受信证书，私钥需最小权限保管。
 - **否决**：前后端独立域名（跨域 Cookie 复杂化且弱化 CSRF 防线）；K8s（过度）。
 
 ### ADR-011 日志与追踪：pino + pino-http + requestId

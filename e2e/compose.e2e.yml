@@ -3,3 +3,15 @@ services:
     environment:
       # E2E 走 HTTP；test 环境不设置 Secure Cookie，浏览器才能携带会话。
       NODE_ENV: test
+
+  web:
+    # E2E 使用 HTTP-only Nginx 配置，避免生产 TLS 配置依赖证书。
+    ports: !override
+      - '${WEB_HTTP_PORT:-8080}:80'
+    volumes: !override
+      - type: bind
+        source: ./apps/web/nginx.e2e.conf
+        target: /etc/nginx/conf.d/default.conf
+        read_only: true
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1/']

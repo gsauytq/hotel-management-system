@@ -77,7 +77,7 @@ node -e "console.log(require('node:crypto').randomBytes(24).toString('base64url'
 | `LOG_LEVEL`              | 否     | `info`              | pino 日志级别                              |
 | `CORS_ORIGIN`            | 否     | 空                  | 显式跨域白名单；同源部署不启用             |
 
-根目录 `.env`（供 `docker compose` 使用，见 `.env.example`）：`MYSQL_ROOT_PASSWORD`、`MYSQL_DATABASE`、`MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_HOST_PORT`（默认 3307）、`SESSION_TTL_HOURS`、`LOG_LEVEL`、`GUEST_ID_HMAC_KEY`、`GUEST_ID_CIPHER_KEY`、`ADMIN_INITIAL_PASSWORD`、`WEB_HTTP_PORT`（默认 8080）。
+根目录 `.env`（供 `docker compose` 使用，见 `.env.example`）：`MYSQL_ROOT_PASSWORD`、`MYSQL_DATABASE`、`MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_HOST_PORT`（默认 3307）、`SESSION_TTL_HOURS`、`LOG_LEVEL`、`GUEST_ID_HMAC_KEY`、`GUEST_ID_CIPHER_KEY`、`ADMIN_INITIAL_PASSWORD`、`WEB_HTTP_PORT`（默认 80）、`WEB_HTTPS_PORT`（默认 443）、`TLS_CERT_DIR`（默认 `./certs`）。
 
 > 连接串中的密码如含 `#`、`@`、`:` 等特殊字符必须 URL 编码；`.env` 中未编码的 `#` 会被解析为行内注释（推荐使用 base64url 随机密码）。
 
@@ -386,18 +386,19 @@ docker compose -f compose.prod.yml --profile tools run --rm seed   # 可选：�
 
 - `api` 容器启动时自动执行 `prisma migrate deploy`（只应用未执行迁移，幂等；失败则容器不启动）。
 - 迁移采用前滚策略，禁止手工改生产库结构（详见 `docs/database-design.md` §7）。
+- 将 `fullchain.pem` / `privkey.pem` 放入 `TLS_CERT_DIR`（默认 `./certs`）；`web` 容器内 Nginx 终结 443，80 仅 301 跳转。
 - MySQL 不映射宿主端口，仅 Compose 内网可达。
-- **生产上线门禁**：Q-09 A（TLS/域名、`Secure`/HSTS）与 Q-08 B（PII 合规/保留期评审）必须先完成；当前 Q-08 B 书面结论已确认（独立合规签字待补），Q-09 A 业主决定暂缓生产上线；A-20 B（首登强制改密）已实现。
+- **生产上线门禁**：Q-09 A（TLS/域名、`Secure`/HSTS）与 Q-08 B（PII 合规/保留期评审）必须先完成；当前 Q-08 B 书面结论已确认（独立合规签字待补），Q-09 A 的 D2-a/b TLS 配置已落地并完成本地自签浏览器验证，生产域名/受信证书待提供；A-20 B（首登强制改密）已实现。
 - **首次 seed 后**：新管理员首次登录必须修改初始密码。部署冒烟如遇 `mustChangePassword=true`，需提供 `HMS_SMOKE_NEW_PASSWORD` 执行一次改密，或先人工改密。
 
 ## 故障排查
 
-| 症状                                   | 处理                                                                                  |
-| -------------------------------------- | ------------------------------------------------------------------------------------- |
-| `pnpm` 命令不可用/报 corepack 模块错误 | 重新安装：`npm i -g pnpm@12.6.0`                                                      |
-| 启动报“环境变量校验失败”               | 按提示字段对照 `apps/server/.env.example` 补齐                                        |
-| 数据库密码含特殊字符导致连接失败       | 对密码做 URL 编码，或改用 base64url 随机密码                                          |
-| 端口冲突                               | `MYSQL_HOST_PORT`（默认 3307）、`PORT`（3000）、Vite（5173）、`WEB_HTTP_PORT`（8080） |
+| 症状                                   | 处理                                                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `pnpm` 命令不可用/报 corepack 模块错误 | 重新安装：`npm i -g pnpm@12.6.0`                                                                             |
+| 启动报“环境变量校验失败”               | 按提示字段对照 `apps/server/.env.example` 补齐                                                               |
+| 数据库密码含特殊字符导致连接失败       | 对密码做 URL 编码，或改用 base64url 随机密码                                                                 |
+| 端口冲突                               | `MYSQL_HOST_PORT`（默认 3307）、`PORT`（3000）、Vite（5173）、`WEB_HTTP_PORT`（80）、`WEB_HTTPS_PORT`（443） |
 
 ## 文档索引
 
@@ -409,7 +410,7 @@ docker compose -f compose.prod.yml --profile tools run --rm seed   # 可选：�
 - 开发计划：`docs/development-plan.md`
 - 生产部署与运维：`docs/deployment.md`
 - PII 合规检查单（Q-08 B，书面结论已确认；独立合规签字待补）：`docs/pii-compliance-checklist.md`
-- TLS 上线检查单（Q-09 A，暂缓生产上线；本地链路已验证）：`docs/tls-launch-checklist.md`
+- TLS 上线检查单（Q-09 A，D2-a/b 配置已落地；本地自签+浏览器验证）：`docs/tls-launch-checklist.md`
 - 需求追踪（批准前历史）：`docs/requirements-traceability.md`
 - 已批准需求基线：`docs/requirements-traceability-approval-draft.md`
 - 业务假设决议：`docs/business-assumptions-decision-list.md`

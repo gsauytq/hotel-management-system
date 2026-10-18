@@ -121,7 +121,7 @@ Set-Cookie: hms_sid=<64 hex>;
 
 ## 11. 其他传输与运维安全
 
-- 生产 TLS：由 Nginx/宿主 LB 终结（证书待提供【待确认 Q-10】）；启用 HTTP→HTTPS 301 与 `HSTS`（max-age 半年）。
+- 生产 TLS（D2-a/b）：由 `web` 容器内 Nginx 终结 443，证书经 `TLS_CERT_DIR` 只读挂载；80 仅 HTTP→HTTPS 301；HTTPS 启用 `HSTS`（max-age 15552000）。生产域名/受信证书待提供。
 - 健康检查端点 `GET /api/health` 仅返回 `{ status: "ok" }`，不泄露版本/依赖信息。
 - 依赖安全：CI `pnpm audit --prod`（高危阻断）、锁文件（`pnpm-lock.yaml`）必更。
 - 容器：非 root 用户运行、镜像固定 digest、仅暴露 80/443（mysql 不映射宿主端口，仅 compose 内网）。
