@@ -1,4 +1,4 @@
-﻿name: CI
+name: CI
 
 on:
   push:
@@ -145,7 +145,7 @@ jobs:
           docker compose -p hms-e2e -f compose.prod.yml -f e2e/compose.e2e.yml --env-file e2e/compose.env --profile tools run --rm seed
 
       - name: 运行 E2E
-        run: pnpm --filter @hms/e2e test
+        run: pnpm --filter @hms/e2e test:e2e
 
       - name: 上传 E2E 报告
         if: failure()

@@ -5,7 +5,7 @@
   "type": "module",
   "description": "HMS Playwright E2E（真实 compose 栈）",
   "scripts": {
-    "test": "playwright test",
+    "test:e2e": "playwright test",
     "test:ui": "playwright test --ui",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "report": "playwright show-report"

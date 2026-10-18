@@ -1,4 +1,4 @@
-﻿# Playwright E2E
+# Playwright E2E
 
 真实 compose 栈的浏览器级主流程测试。覆盖：A-20 首登强制改密、预订/入住/退房/订单、walk-in、RECEPTIONIST 访问 ADMIN 页面 403。
 
@@ -21,7 +21,7 @@ docker compose -p hms-e2e -f compose.prod.yml -f e2e/compose.e2e.yml --env-file 
 $env:HMS_E2E_BASE_URL='http://127.0.0.1:80'
 $env:HMS_E2E_ADMIN_INITIAL_PASSWORD='E2e#Init12345'
 $env:HMS_E2E_ADMIN_PASSWORD='E2e#Flow12345'
-pnpm --filter @hms/e2e test
+pnpm --filter @hms/e2e test:e2e
 
 # 4) 清理（含数据卷；下次运行前必须清理，否则首登改密测试会失败）
 docker compose -p hms-e2e -f compose.prod.yml -f e2e/compose.e2e.yml --env-file e2e/compose.env down -v
