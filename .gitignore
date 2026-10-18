@@ -8,10 +8,14 @@ dist/
 # generated code (Prisma Client)
 apps/server/src/generated/
 
-# test / coverage
+# test / coverage / local verification artifacts
 coverage/
 e2e/playwright-report/
 e2e/test-results/
+artifacts/
+
+# TLS certificates and private keys (never commit)
+certs/
 
 # logs
 *.log

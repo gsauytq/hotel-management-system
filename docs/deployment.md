@@ -2,7 +2,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 状态 | 初版（2026-10-18）；Q-08 B 书面结论已确认（独立合规签字待补）；Q-09 A 暂缓生产上线 |
+| 状态 | TLS 配置已落地（D2-a/b：容器内 Nginx 终结 443）；本地自签浏览器验证通过；生产域名/受信证书待提供 |
 | 适用版本 | 需求基线 v1.0；含 A-20 B 首登强制改密与 walk-in 前端 |
 | 关联 | [`post-approval-action-register.md`](./post-approval-action-register.md)、[`security-design.md`](./security-design.md)、[`test-plan.md`](./test-plan.md) |
 
@@ -14,16 +14,17 @@
 - [ ] 已复制 `.env.example` 为 `.env`，并替换全部 `REPLACE_*` 占位值。
 - [ ] `MYSQL_ROOT_PASSWORD`、`MYSQL_PASSWORD` 使用强随机值；`GUEST_ID_HMAC_KEY`、`GUEST_ID_CIPHER_KEY` 为 32 字节 base64。
 - [ ] `ADMIN_INITIAL_PASSWORD` ≥10 位且不含用户名；首次登录后必须修改（A-20 B）。
-- [ ] Q-09 A：域名与 TLS 证书就绪；边缘代理启用 HTTPS、HSTS，并只暴露 443（内部可回源 8080）。当前业主决定暂缓生产上线；本地链路已验证。检查单见 [`tls-launch-checklist.md`](./tls-launch-checklist.md)。
+- [ ] Q-09 A：生产域名与受信证书就绪，放入 `TLS_CERT_DIR`（`fullchain.pem` / `privkey.pem`）；web 容器内 Nginx 终结 443，80 仅 301 跳转并启用 HSTS。检查单见 [`tls-launch-checklist.md`](./tls-launch-checklist.md)。
 - [ ] Q-08 B：PII 合规、证件号保留期、掩码口径已形成书面结论（2026-10-18 业主电子确认）；独立合规签字与生产前技术债待补。检查单见 [`pii-compliance-checklist.md`](./pii-compliance-checklist.md)。
 - [ ] 已确认 `main` 分支保护与 CI 四项检查（静态/集成/密钥扫描/E2E）为合并门禁。
 
 ## 2. 首次部署
 
 ```bash
-# 1) 准备环境变量（不得提交 .env）
+# 1) 准备环境变量与证书（均不得提交到仓库）
 cp .env.example .env
 # 编辑 .env，替换所有 REPLACE_*；确认 MYSQL_*、GUEST_ID_*、ADMIN_INITIAL_PASSWORD
+# 将 fullchain.pem / privkey.pem 放入 TLS_CERT_DIR（默认 ./certs），私钥权限最小化
 
 # 2) 构建并启动 web + api + mysql
 docker compose -f compose.prod.yml up -d --build
@@ -47,28 +48,40 @@ docker compose -f compose.prod.yml --profile tools run --rm seed
 
 ```bash
 # 已有管理员已完成首登改密时：
-HMS_SMOKE_PASSWORD='<当前管理员密码>' node scripts/deploy-smoke.mjs
+HMS_SMOKE_BASE_URL='https://<域名>' \
+HMS_SMOKE_PASSWORD='<当前管理员密码>' \
+node scripts/deploy-smoke.mjs
 
 # 全新 seed 且尚未改密时（脚本会执行一次改密，然后重新登录）：
+HMS_SMOKE_BASE_URL='https://<域名>' \
 HMS_SMOKE_PASSWORD='<ADMIN_INITIAL_PASSWORD>' \
 HMS_SMOKE_NEW_PASSWORD='<新管理员密码>' \
 node scripts/deploy-smoke.mjs
 ```
 
-- 默认目标 `http://127.0.0.1:8080`；TLS 场景可设置 `HMS_SMOKE_BASE_URL=https://<域名>`。
+- 生产目标必须为 `https://<域名>`；HTTPS 下冒烟额外断言会话 Cookie 带 `Secure`。
 - 冒烟检查：health、登录、me、room-types、rooms。
 - 若首登未改密且未提供 `HMS_SMOKE_NEW_PASSWORD`，脚本会明确失败，不会静默通过。
 
-## 4. TLS 与反向代理
+## 4. TLS 与反向代理（D2-a/b：容器内 Nginx 终结）
 
-- 当前 Compose 的 `web` 容器只提供 HTTP 80（宿主 `WEB_HTTP_PORT`，默认 8080）；TLS 由边缘 Nginx/LB 终结。
-- 边缘代理要求：
-  - HTTP → HTTPS 301；
-  - HSTS（至少 6 个月）；
-  - 只代理到 web 的 8080；
-  - 保留 `X-Request-Id` / `X-Forwarded-For`，并确保 `trust proxy=1` 语义成立；
-  - 限制请求体大小与超时。
-- `NODE_ENV=production` 时会话 Cookie 带 `Secure`；因此生产必须使用 HTTPS，否则登录 Cookie 不会发送。
+- `web` 容器同时暴露 80 与 443：
+  - 80 仅返回 301 到 `https://<host>`，不承载登录或业务请求；
+  - 443 由 `apps/web/nginx.conf` 终结 TLS，使用 `TLS_CERT_DIR` 只读挂载的 `fullchain.pem` / `privkey.pem`；
+  - HTTPS 响应带 `Strict-Transport-Security: max-age=15552000`。
+- 端口与证书配置：
+  - `.env` 中 `WEB_HTTP_PORT=80`、`WEB_HTTPS_PORT=443`、`TLS_CERT_DIR=./certs`；
+  - 标准 80/443 是默认值；Nginx 的 301 使用 `$host`，非标准 HTTPS 端口不在当前支持范围；
+  - 私钥不得入库；`certs/` 已在 `.gitignore` 中。
+- `NODE_ENV=production` 时会话 Cookie 带 `Secure`；生产只允许 HTTPS 登录，因此 HTTP 与 Secure Cookie 的矛盾被 301 消除。
+- **D2-c（HTTP 风险接受）未启用**：若负责人另行批准，必须在 API 配置中增加显式 `COOKIE_SECURE` 开关（默认跟随 `NODE_ENV`），保留 Secure 逻辑并书面接受风险；不得把 `NODE_ENV` 改为 development 作为替代。
+- 验证：
+  ```bash
+  ./scripts/verify-deployment.sh
+  # 私有 CA/自签本地验证可设置：
+  # HMS_TLS_CA_FILE=./certs/fullchain.pem HMS_TLS_INSECURE=1 ./scripts/verify-deployment.sh
+  ```
+  脚本会加载 `.env`、检查 301/HSTS/证书有效期、执行 HTTPS 冒烟，并验证重启恢复。
 
 ## 5. 备份与恢复
 
@@ -106,8 +119,10 @@ docker compose -f compose.prod.yml up -d --build
 
 # 4) 验证
 docker compose -f compose.prod.yml ps
-curl -fsS http://127.0.0.1:8080/api/health
-HMS_SMOKE_PASSWORD='<当前密码>' node scripts/deploy-smoke.mjs
+curl -fsS https://<域名>/api/health
+HMS_SMOKE_BASE_URL='https://<域名>' \
+HMS_SMOKE_PASSWORD='<当前密码>' \
+node scripts/deploy-smoke.mjs
 ```
 
 - 迁移只前滚；回滚应用镜像不等于回滚数据库。若迁移不兼容，必须使用备份恢复并评估数据损失。
@@ -141,7 +156,7 @@ docker compose -f compose.prod.yml logs -f mysql
 - [ ] 数据库备份可用并已演练恢复。
 - [ ] `main` 分支保护与 CI 门禁已启用。
 - [ ] 发布 tag/镜像 digest 已登记。
-- [ ] 已知限制：单实例内存限流；E2E 尚未纳入 CI；无自动备份调度。
+- [ ] 已知限制：单实例内存限流；无自动备份调度；D2-c HTTP 路径未启用。
 
 ## 9. 相关文档
 

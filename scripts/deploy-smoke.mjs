@@ -14,14 +14,17 @@
  *   - 未提供时明确失败，不进行后续只读检查。
  *
  * 环境变量：
- *   HMS_SMOKE_BASE_URL      默认 http://127.0.0.1:8080（compose.prod 的 web 端口）
+ *   HMS_SMOKE_BASE_URL      默认 http://127.0.0.1:8080；生产应使用 https://<域名>
  *   HMS_SMOKE_USERNAME      默认 admin
  *   HMS_SMOKE_PASSWORD      必填（或回退 ADMIN_INITIAL_PASSWORD）
  *   HMS_SMOKE_NEW_PASSWORD  可选；仅首登强制改密时需要
  *
+ * HTTPS 下额外断言会话 Cookie 带 Secure；HTTP 仅限已批准的 D2-c 风险接受路径。
+ *
  * 任一检查失败即以非 0 退出码结束。
  */
 const baseUrl = (process.env.HMS_SMOKE_BASE_URL ?? 'http://127.0.0.1:8080').replace(/\/$/, '');
+const isHttps = baseUrl.startsWith('https://');
 const username = process.env.HMS_SMOKE_USERNAME ?? 'admin';
 const password = process.env.HMS_SMOKE_PASSWORD ?? process.env.ADMIN_INITIAL_PASSWORD;
 const newPassword = process.env.HMS_SMOKE_NEW_PASSWORD;
@@ -67,6 +70,13 @@ async function main() {
   check('会话 Cookie 存在', /hms_sid=[0-9a-f]{64}/.test(setCookie));
   check('Cookie HttpOnly', /HttpOnly/i.test(setCookie));
   check('Cookie SameSite=Strict', /SameSite=Strict/i.test(setCookie));
+  if (isHttps) {
+    check('Cookie Secure（HTTPS）', /(?:^|;\s*)Secure(?:;|$)/i.test(setCookie));
+  } else if (/(?:^|;\s*)Secure(?:;|$)/i.test(setCookie)) {
+    console.warn(
+      '[WARN] HTTP 下 Set-Cookie 带 Secure，浏览器会拒绝；生产必须使用 HTTPS，或按 D2-c 增加 COOKIE_SECURE 开关',
+    );
+  }
   let cookie = setCookie.split(',')[0]?.split(';')[0] ?? '';
 
   if (loginBody?.data?.mustChangePassword === true) {

@@ -114,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HMS_E2E_BASE_URL: http://127.0.0.1
+      HMS_E2E_BASE_URL: http://127.0.0.1:8080
       # 必须与 e2e/compose.env 的 ADMIN_INITIAL_PASSWORD 一致；仅测试值。
       HMS_E2E_ADMIN_INITIAL_PASSWORD: E2e#Init12345
       HMS_E2E_ADMIN_PASSWORD: E2e#Flow12345

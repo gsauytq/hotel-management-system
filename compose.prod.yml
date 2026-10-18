@@ -43,6 +43,8 @@ services:
       dockerfile: apps/server/Dockerfile
     restart: unless-stopped
     environment:
+      # 生产必须经 web 的 443 TLS 入口；NODE_ENV=production 使会话 Cookie 带 Secure。
+      # HTTP 80 仅 301 到 HTTPS。D2-c HTTP 风险接受需单独批准并新增 COOKIE_SECURE 开关，禁止删除 Secure。
       NODE_ENV: production
       PORT: '3000'
       # 运行库使用最小权限应用账号；迁移使用 root（DDL 账号，security-design §6）
@@ -96,13 +98,20 @@ services:
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     ports:
-      # 生产如置于 TLS 终结器之后可改为 80:80；默认 8080 便于本地验收
-      - '${WEB_HTTP_PORT:-8080}:80'
+      # 80 仅 301 跳转；443 由容器内 Nginx 终结 TLS
+      - '${WEB_HTTP_PORT:-80}:80'
+      - '${WEB_HTTPS_PORT:-443}:443'
+    volumes:
+      # 只读挂载 fullchain.pem / privkey.pem；私钥不得提交到仓库
+      - type: bind
+        source: ${TLS_CERT_DIR:-./certs}
+        target: /etc/nginx/certs
+        read_only: true
     depends_on:
       api:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1/']
+      test: ['CMD', 'wget', '--no-check-certificate', '-q', '-O', '/dev/null', 'https://127.0.0.1/']
       interval: 10s
       timeout: 5s
       retries: 6
