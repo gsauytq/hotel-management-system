@@ -371,7 +371,7 @@ pnpm --filter @hms/web check     # typecheck + lint + format:check + test
   `HMS_INTEGRATION=1 pnpm --filter @hms/server test`（测试数据以 `itest_`/随机后缀创建并自动清理）。
 - A-20 B 测试覆盖：后端改密成功/当前密码错误/策略拒绝/首登 gate/旧会话与旧密码失效；前端强制改密页、守卫、登录跳转。
 - walk-in 前端测试覆盖：房型加载、可用房查询、日期变化重查、S1 契约字段、409 冲突、网络/超时不确定态、重复提交防护、父页面刷新。
-- 当前单元测试 339（shared 37 + server 151 + web 151）；integration job 255 passed / 35 files（含 server 单测与真库用例）。A-20 与 walk-in 变更以最新 `main` CI 运行为准；E2E 仍未实现。
+- 当前单元测试 339（shared 37 + server 151 + web 151）；integration job 255 passed / 35 files（含 server 单测与真库用例）。CI 的 `static-and-unit` 已包含 `pnpm build`；E2E 仍未实现。
 
 ## 生产形态部署
 
