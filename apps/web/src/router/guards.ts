@@ -23,6 +23,11 @@ export function installAuthGuards(router: Router): void {
       await authStore.fetchMe();
     }
 
+    // A-20 B：首登未改密时，只允许修改密码页；改密完成后重新登录
+    if (authStore.isAuthenticated && authStore.mustChangePassword) {
+      return to.name === 'change-password' ? true : { name: 'change-password' };
+    }
+
     if (to.meta.public === true) {
       if (to.name === 'login' && authStore.isAuthenticated) {
         return resolveSafeRedirect(to.query.redirect) ?? DEFAULT_AUTHENTICATED_ROUTE;

@@ -2,6 +2,7 @@ import type { CookieOptions, Request, Response } from 'express';
 
 import type {
   ApiSuccessEnvelope,
+  ChangePasswordRequest,
   CurrentUser,
   LoginRequest,
   OkResult,
@@ -24,6 +25,7 @@ export interface AuthController {
   login: (req: Request, res: Response) => Promise<void>;
   logout: (req: Request, res: Response) => Promise<void>;
   me: (req: Request, res: Response) => void;
+  changePassword: (req: Request, res: Response) => Promise<void>;
 }
 
 export function createAuthController(deps: AuthControllerDependencies): AuthController {
@@ -66,6 +68,24 @@ export function createAuthController(deps: AuthControllerDependencies): AuthCont
         throw ApiError.unauthorized();
       }
       const payload: ApiSuccessEnvelope<CurrentUser> = { data: user };
+      res.status(200).json(payload);
+    },
+
+    async changePassword(req, res) {
+      const { user } = req;
+      // requireAuth 已保证，此处为防御性检查
+      if (user === undefined) {
+        throw ApiError.unauthorized();
+      }
+      await deps.authService.changePassword(req.body as ChangePasswordRequest, {
+        requestId: req.requestId,
+        ip: req.ip,
+        actorId: user.id,
+        username: user.username,
+      });
+      // 全部会话已在事务内删除；清理当前浏览器 Cookie
+      res.clearCookie(deps.sessionCookie.name, deps.sessionCookie.clearOptions);
+      const payload: ApiSuccessEnvelope<OkResult> = { data: { ok: true } };
       res.status(200).json(payload);
     },
   };

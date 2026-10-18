@@ -19,6 +19,7 @@ async function mountLayout(role: Role, path = '/rooms') {
     username: role === 'ADMIN' ? 'admin' : 'front01',
     displayName: role === 'ADMIN' ? '管理员' : '前台',
     role,
+    mustChangePassword: false,
   };
   authStore.booted = true;
 

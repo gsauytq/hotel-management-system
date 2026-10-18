@@ -11,6 +11,7 @@ export function createFakeAuthService(overrides: Partial<AuthService> = {}): Aut
       throw ApiError.fromCode('INVALID_CREDENTIALS', '用户名或密码错误');
     },
     logout: async () => undefined,
+    changePassword: async () => undefined,
     resolveSession: async () => ({ status: 'missing' }),
     cleanupExpiredSessions: async () => 0,
     ...overrides,

@@ -72,6 +72,18 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/change-password',
+    component: () => import('../layouts/AuthLayout.vue'),
+    children: [
+      {
+        path: '',
+        name: 'change-password',
+        component: () => import('../views/login/ChangePasswordView.vue'),
+        meta: { title: '修改密码' },
+      },
+    ],
+  },
+  {
     path: '/',
     component: () => import('../layouts/DefaultLayout.vue'),
     redirect: '/rooms',

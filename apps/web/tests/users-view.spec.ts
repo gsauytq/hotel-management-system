@@ -49,6 +49,7 @@ async function mountView() {
     username: self.username,
     displayName: self.displayName,
     role: self.role,
+    mustChangePassword: false,
   };
   authStore.booted = true;
 

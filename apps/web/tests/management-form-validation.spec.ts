@@ -72,6 +72,7 @@ describe('员工/客人表单校验', () => {
       username: self.username,
       displayName: self.displayName,
       role: self.role,
+      mustChangePassword: false,
     };
 
     const wrapper = mount(UserFormDialog, {

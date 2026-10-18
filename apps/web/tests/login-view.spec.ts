@@ -20,6 +20,7 @@ const adminUser: SessionUser = {
   username: 'admin',
   displayName: '管理员',
   role: 'ADMIN',
+  mustChangePassword: false,
 };
 
 const mockedLogin = vi.mocked(authApi.login);
@@ -29,6 +30,11 @@ function createTestRouter() {
     history: createMemoryHistory(),
     routes: [
       { path: '/login', name: 'login', component: LoginView },
+      {
+        path: '/change-password',
+        name: 'change-password',
+        component: { template: '<div />' },
+      },
       { path: '/rooms', name: 'rooms', component: { template: '<div />' } },
       { path: '/bookings', name: 'bookings', component: { template: '<div />' } },
     ],
@@ -88,6 +94,19 @@ describe('LoginView', () => {
       expect(router.currentRoute.value.path).toBe('/bookings');
     });
     expect(mockedLogin).toHaveBeenCalledWith({ username: 'admin', password: 'secret' });
+  });
+
+  it('首登未改密登录成功后强制跳转修改密码页', async () => {
+    mockedLogin.mockResolvedValue({ ...adminUser, mustChangePassword: true });
+    const { wrapper, router } = await mountLogin('/login?redirect=/bookings');
+
+    await fillCredentials(wrapper);
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.name).toBe('change-password');
+    });
   });
 
   it('错误凭据显示内联失败提示且不跳转', async () => {

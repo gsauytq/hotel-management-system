@@ -29,6 +29,7 @@ function disabledUser(): UserRecord {
     displayName: '已停用员工',
     role: 'RECEPTIONIST',
     status: 'DISABLED',
+    mustChangePassword: false,
     // 停用分支不应比较该哈希；比较对象是 dummy hash（由 consumeDummyCompare 生成）
     passwordHash: '$2b$12$disabledbranch.unusedhash.value0000000000000000000000000000',
     failedAttempts: 0,
@@ -39,6 +40,8 @@ function disabledUser(): UserRecord {
 function buildService() {
   const repository: AuthRepository = {
     findUserByUsername: vi.fn(async () => disabledUser()),
+    findUserById: vi.fn(async () => disabledUser()),
+    updatePasswordAndInvalidateSessions: vi.fn(async () => undefined),
     recordFailedLogin: vi.fn(async () => ({ failedAttempts: 1, lockedUntil: null })),
     completeLogin: vi.fn(async () => undefined),
     findSessionWithUser: vi.fn(async () => null),

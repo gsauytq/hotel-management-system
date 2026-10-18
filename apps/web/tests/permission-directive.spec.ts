@@ -28,6 +28,7 @@ function mountDemo(role: Role) {
     username: 'user',
     displayName: '用户',
     role,
+    mustChangePassword: false,
   };
   authStore.booted = true;
 

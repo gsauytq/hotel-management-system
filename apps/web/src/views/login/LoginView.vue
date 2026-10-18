@@ -64,6 +64,10 @@ async function handleSubmit(): Promise<void> {
     }
 
     await authStore.login(parsed.data);
+    if (authStore.mustChangePassword) {
+      await router.replace({ name: 'change-password' });
+      return;
+    }
     const redirect = resolveSafeRedirect(route.query.redirect);
     await router.replace(redirect ?? '/rooms');
   } catch (error) {

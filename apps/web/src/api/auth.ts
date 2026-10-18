@@ -1,4 +1,10 @@
-import type { CurrentUser, LoginRequest, OkResult, SessionUser } from '@hms/shared';
+import type {
+  ChangePasswordRequest,
+  CurrentUser,
+  LoginRequest,
+  OkResult,
+  SessionUser,
+} from '@hms/shared';
 
 import { get, post } from './request';
 
@@ -27,4 +33,9 @@ export function logout(): Promise<OkResult> {
  */
 export function fetchCurrentUser(): Promise<CurrentUser> {
   return get<CurrentUser>('/auth/me', undefined, { silent: true, skipAuthHandler: true });
+}
+
+/** A4 自助改密（A-20 B）；成功后服务端使全部会话失效。 */
+export function changePassword(payload: ChangePasswordRequest): Promise<OkResult> {
+  return post<OkResult>('/auth/change-password', payload, { silent: true });
 }

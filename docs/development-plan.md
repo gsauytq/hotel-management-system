@@ -6,7 +6,7 @@
 | 日期 | 2026-10-14 |
 | 拆分原则 | 每个任务可独立验收（有明确 DoD + 自动化检查）；先后端契约与核心域、后前端页面、最后端到端与部署；任何任务不改变冻结契约（除非走变更评审） |
 
-> **2026-10-18 状态更新**：需求基线 v1.0 已批准（[批准工作稿](./requirements-traceability-approval-draft.md)）。Q-04 A 维持统计看板等 V2 范围外；A-20 B 首登强制改密为新批准的安全要求，尚未实现；T-17 的 walk-in 前端入口仍待实现。当前行动项见 [`post-approval-action-register.md`](./post-approval-action-register.md)。
+> **2026-10-18 状态更新**：需求基线 v1.0 已批准（[批准工作稿](./requirements-traceability-approval-draft.md)）。Q-04 A 维持统计看板等 V2 范围外；A-20 B 首登强制改密已实现；T-17 的 walk-in 前端入口仍待实现。当前行动项见 [`post-approval-action-register.md`](./post-approval-action-register.md)。
 
 ## 里程碑
 

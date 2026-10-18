@@ -65,6 +65,7 @@ erDiagram
 | display_name* | VARCHAR(50) | NOT NULL | 姓名 |
 | role* | ENUM('ADMIN','RECEPTIONIST') | NOT NULL | 【假设 A-01】 |
 | status* | ENUM('ACTIVE','DISABLED') | NOT NULL DEFAULT 'ACTIVE' | 软停用 |
+| must_change_password* | BOOLEAN | NOT NULL DEFAULT FALSE | A-20 B：首登强制改密标记；新 seed 管理员为 TRUE |
 | failed_attempts* | INT | NOT NULL DEFAULT 0 | 连续登录失败计数 |
 | locked_until | DATETIME(3) | NULL | 账户锁定截止（NFR-SEC-003） |
 | last_login_at | DATETIME(3) | NULL | |

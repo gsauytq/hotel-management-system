@@ -16,6 +16,7 @@ const adminUser: SessionUser = {
   username: 'admin',
   displayName: '管理员',
   role: 'ADMIN',
+  mustChangePassword: false,
 };
 
 const currentUser: CurrentUser = { ...adminUser, status: 'ACTIVE' };

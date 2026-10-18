@@ -19,6 +19,12 @@ const stub = { template: '<div />' };
 const guardTestRoutes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: stub, meta: { public: true, title: '登录' } },
   {
+    path: '/change-password',
+    name: 'change-password',
+    component: stub,
+    meta: { title: '修改密码' },
+  },
+  {
     path: '/',
     component: stub,
     children: [
@@ -47,6 +53,7 @@ const receptionist: CurrentUser = {
   displayName: '前台',
   role: 'RECEPTIONIST',
   status: 'ACTIVE',
+  mustChangePassword: false,
 };
 
 const admin: CurrentUser = {
@@ -55,6 +62,7 @@ const admin: CurrentUser = {
   displayName: '管理员',
   role: 'ADMIN',
   status: 'ACTIVE',
+  mustChangePassword: false,
 };
 
 const mockedFetchCurrentUser = vi.mocked(authApi.fetchCurrentUser);
@@ -97,6 +105,25 @@ describe('认证与角色守卫', () => {
     await router.push('/users');
 
     expect(router.currentRoute.value.name).toBe('users');
+  });
+
+  it('首登未改密：访问其他页面一律跳转修改密码页', async () => {
+    mockedFetchCurrentUser.mockResolvedValue({ ...admin, mustChangePassword: true });
+    const router = createGuardedRouter();
+
+    await router.push('/users');
+    expect(router.currentRoute.value.name).toBe('change-password');
+
+    await router.push('/login');
+    expect(router.currentRoute.value.name).toBe('change-password');
+  });
+
+  it('首登未改密：允许停留在修改密码页', async () => {
+    mockedFetchCurrentUser.mockResolvedValue({ ...admin, mustChangePassword: true });
+    const router = createGuardedRouter();
+
+    await router.push('/change-password');
+    expect(router.currentRoute.value.name).toBe('change-password');
   });
 
   it('已登录访问登录页时跳转安全 redirect 或默认首页', async () => {

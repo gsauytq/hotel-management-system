@@ -19,6 +19,7 @@ export const useAuthStore = defineStore('auth', () => {
   const booted = ref(false);
 
   const isAuthenticated = computed(() => user.value !== null);
+  const mustChangePassword = computed(() => user.value?.mustChangePassword === true);
 
   async function login(credentials: LoginCredentials): Promise<void> {
     user.value = await loginRequest(credentials);
@@ -55,6 +56,7 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     booted,
     isAuthenticated,
+    mustChangePassword,
     login,
     logout,
     fetchMe,
