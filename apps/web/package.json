@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "HMS 前端 SPA（Vue 3 + Element Plus；基础设施与后台布局已就绪，业务页面待开发）",
+  "description": "HMS 前端 SPA（Vue 3 + Element Plus；核心业务页面已实现，walk-in 入口待补）",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit -p tsconfig.json && vite build",

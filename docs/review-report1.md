@@ -1,5 +1,7 @@
 # 独立代码审查报告 — HMS（酒店管理系统）
 
+> **历史快照说明（2026-10-18）**：本报告记录当时的审查证据，不是当前缺陷清单。A-1（合并视角超售）、A-2（OpenAPI lint）、A-3（停用账号时序）、A-4（锁定复位竞态）均已修复并有回归测试；A-2 当前 redocly lint 通过。C-2（退房失败审计）、B-1/B-2/B-3 等低风险项仍可作为遗留登记。当前批准基线与行动项见 [`requirements-traceability-approval-draft.md`](./requirements-traceability-approval-draft.md) 与 [`post-approval-action-register.md`](./post-approval-action-register.md)。
+
 ## 0. 变更范围确认
 
 - Git 仓库（`E:\web_project`）**尚无任何提交**，`git diff` 不存在；`hotel-management-system/` 整体为 untracked。**本次审查范围 = 整个工作树**（首次基线全量审查），而非增量 diff。

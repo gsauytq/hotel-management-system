@@ -1,5 +1,7 @@
 # 复核结论 — review-report1.md
 
+> **历史快照说明（2026-10-18）**：本复核报告记录当时的证据。A-1/A-2/A-3/A-4 已修复并有回归测试；redocly lint 当前通过。当前批准基线与行动项见 [`requirements-traceability-approval-draft.md`](./requirements-traceability-approval-draft.md) 与 [`post-approval-action-register.md`](./post-approval-action-register.md)。
+
 复核方式：逐条重读代码与文档、重跑关键命令、并对 A-1/A-4 补做了**动态复现**（真实 MySQL，临时脚本已清理）。仓库状态与原报告一致（仅新增 `docs/review-report1.md`）。
 
 ## 一、确认的问题（复核成立）

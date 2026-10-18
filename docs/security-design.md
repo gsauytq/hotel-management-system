@@ -111,7 +111,7 @@ Set-Cookie: hms_sid=<64 hex>;
 | `SESSION_TTL_HOURS` | 会话时长 | 默认 8 |
 | `GUEST_ID_HMAC_KEY` | 证件号查重 HMAC 密钥 | ≥32 bytes base64 |
 | `GUEST_ID_CIPHER_KEY` | 证件号 AES-256-GCM 密钥 | 32 bytes base64 |
-| `ADMIN_INITIAL_PASSWORD` | 种子管理员密码 | 仅 seed 用，≥10 位；生产首次登录后建议改密【假设 A-20：本期不做强制改密，登记 V2】 |
+| `ADMIN_INITIAL_PASSWORD` | 种子管理员密码 | 仅 seed 用，≥10 位；**A-20 B 已于 2026-10-18 批准：首登强制改密；当前代码尚未实现，上线前必须补齐** |
 | `LOG_LEVEL` | 日志级别 | 默认 `info` |
 | `CORS_ORIGIN` | 显式允许的源（默认无） | 本期同源部署，不启用跨域 |
 

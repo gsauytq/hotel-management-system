@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "HMS 后端 API（模块化单体骨架；业务模块尚未实现）",
+  "description": "HMS 后端 API（认证、员工、客房、客人、预订、入住/退房、订单已实现）",
   "engines": {
     "node": ">=22.12.0 <23"
   },
