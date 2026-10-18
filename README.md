@@ -2,7 +2,7 @@
 
 小型酒店管理系统（模块化单体）。后端业务模块（认证、员工、客房、客人、预订、入住/退房、订单）已实现；前端已完成**工程基础设施、管理后台布局、登录认证、房型/客房、预订、入住/退房、账单、员工与客人管理页面**。经营看板因统计接口与口径仍为 V2 范围外，仅提供明确的未接入页面，不展示 Mock 指标。
 
-> **需求基线**：v1.0 已于 2026-10-18 批准（[批准工作稿](./docs/requirements-traceability-approval-draft.md) / [决策摘要](./docs/requirements-approval-decision-summary.md)）。A-20 B 首登强制改密与 walk-in 前端入口已实现；E2E 与部署文档仍待完成，见[批准后行动登记](./docs/post-approval-action-register.md)。
+> **需求基线**：v1.0 已于 2026-10-18 批准（[批准工作稿](./docs/requirements-traceability-approval-draft.md) / [决策摘要](./docs/requirements-approval-decision-summary.md)）。A-20 B 首登强制改密与 walk-in 前端入口已实现；部署手册初版已补齐，E2E 仍待完成。见[批准后行动登记](./docs/post-approval-action-register.md)。
 
 ## 技术栈
 
@@ -375,6 +375,8 @@ pnpm --filter @hms/web check     # typecheck + lint + format:check + test
 
 ## 生产形态部署
 
+> 完整步骤（TLS、首登改密、备份/恢复、升级/回滚、排障）见 [`docs/deployment.md`](./docs/deployment.md)。以下为最小启动命令。
+
 ```bash
 cp .env.example .env    # 替换全部占位值
 docker compose -f compose.prod.yml up -d --build
@@ -404,6 +406,7 @@ docker compose -f compose.prod.yml --profile tools run --rm seed   # 可选：�
 - API 契约：`docs/api-contract.md` + `openapi/openapi.yaml`
 - 安全：`docs/security-design.md`
 - 开发计划：`docs/development-plan.md`
+- 生产部署与运维：`docs/deployment.md`
 - 需求追踪（批准前历史）：`docs/requirements-traceability.md`
 - 已批准需求基线：`docs/requirements-traceability-approval-draft.md`
 - 业务假设决议：`docs/business-assumptions-decision-list.md`
