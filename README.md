@@ -2,7 +2,7 @@
 
 小型酒店管理系统（模块化单体）。后端业务模块（认证、员工、客房、客人、预订、入住/退房、订单）已实现；前端已完成**工程基础设施、管理后台布局、登录认证、房型/客房、预订、入住/退房、账单、员工与客人管理页面**。经营看板因统计接口与口径仍为 V2 范围外，仅提供明确的未接入页面，不展示 Mock 指标。
 
-> **需求基线**：v1.0 已于 2026-10-18 批准（[批准工作稿](./docs/requirements-traceability-approval-draft.md) / [决策摘要](./docs/requirements-approval-decision-summary.md)）。A-20 B 首登强制改密与 walk-in 前端入口已实现；部署手册初版已补齐，E2E 仍待完成。见[批准后行动登记](./docs/post-approval-action-register.md)。
+> **需求基线**：v1.0 已于 2026-10-18 批准（[批准工作稿](./docs/requirements-traceability-approval-draft.md) / [决策摘要](./docs/requirements-approval-decision-summary.md)）。A-20 B 首登强制改密、walk-in 前端入口与 Playwright E2E 已实现；部署手册初版已补齐。见[批准后行动登记](./docs/post-approval-action-register.md)。
 
 ## 技术栈
 
@@ -371,7 +371,8 @@ pnpm --filter @hms/web check     # typecheck + lint + format:check + test
   `HMS_INTEGRATION=1 pnpm --filter @hms/server test`（测试数据以 `itest_`/随机后缀创建并自动清理）。
 - A-20 B 测试覆盖：后端改密成功/当前密码错误/策略拒绝/首登 gate/旧会话与旧密码失效；前端强制改密页、守卫、登录跳转。
 - walk-in 前端测试覆盖：房型加载、可用房查询、日期变化重查、S1 契约字段、409 冲突、网络/超时不确定态、重复提交防护、父页面刷新。
-- 当前单元测试 339（shared 37 + server 151 + web 151）；integration job 255 passed / 35 files（含 server 单测与真库用例）。CI 的 `static-and-unit` 已包含 `pnpm build`；E2E 仍未实现。
+- E2E（Playwright）：见 `e2e/README.md`；CI `e2e` job 使用独立 compose 栈与干净数据卷，覆盖首登改密、预订闭环、walk-in、权限路径。
+- 当前单元测试 339（shared 37 + server 151 + web 151）；integration job 255 passed / 35 files（含 server 单测与真库用例）；E2E 4 passed。CI 的 `static-and-unit` 已包含 `pnpm build`。
 
 ## 生产形态部署
 
@@ -411,4 +412,5 @@ docker compose -f compose.prod.yml --profile tools run --rm seed   # 可选：�
 - 已批准需求基线：`docs/requirements-traceability-approval-draft.md`
 - 业务假设决议：`docs/business-assumptions-decision-list.md`
 - 批准决策摘要：`docs/requirements-approval-decision-summary.md`
+- Playwright E2E：`e2e/README.md`
 - 批准后行动登记：`docs/post-approval-action-register.md`

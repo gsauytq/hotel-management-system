@@ -16,6 +16,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @hms/e2e test:e2e",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
     "db:migrate": "pnpm --filter @hms/server db:migrate",
     "db:deploy": "pnpm --filter @hms/server db:deploy",

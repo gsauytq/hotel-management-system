@@ -1,0 +1,5 @@
+services:
+  api:
+    environment:
+      # E2E 走 HTTP；test 环境不设置 Secure Cookie，浏览器才能携带会话。
+      NODE_ENV: test

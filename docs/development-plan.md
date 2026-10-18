@@ -6,7 +6,7 @@
 | 日期 | 2026-10-14 |
 | 拆分原则 | 每个任务可独立验收（有明确 DoD + 自动化检查）；先后端契约与核心域、后前端页面、最后端到端与部署；任何任务不改变冻结契约（除非走变更评审） |
 
-> **2026-10-18 状态更新**：需求基线 v1.0 已批准（[批准工作稿](./requirements-traceability-approval-draft.md)）。Q-04 A 维持统计看板等 V2 范围外；A-20 B 首登强制改密与 T-17 的 walk-in 前端入口均已实现。当前行动项见 [`post-approval-action-register.md`](./post-approval-action-register.md)。
+> **2026-10-18 状态更新**：需求基线 v1.0 已批准（[批准工作稿](./requirements-traceability-approval-draft.md)）。Q-04 A 维持统计看板等 V2 范围外；A-20 B 首登强制改密、T-17 的 walk-in 前端入口与 T-19 Playwright E2E 均已实现。当前行动项见 [`post-approval-action-register.md`](./post-approval-action-register.md)。
 
 ## 里程碑
 
@@ -246,3 +246,4 @@ flowchart LR
 | Prisma 7 兼容性 PoC 失败 | T-01/T-02 | 预留降级评估 0.5 天，按协议上报变更 |
 | 并发正确性反复 | T-09/T-10 | 每个并发用例独立提交；失败用例不得删改预期（协议 §五） |
 | Element Plus 组件行为与设计偏差 | T-17 | CheckoutDialog 复杂表单预留设计复核 |
+
