@@ -17,7 +17,12 @@ vi.mock('../src/api/stays', () => ({
   listStays: vi.fn(),
   getStay: vi.fn(),
   checkInBooking: vi.fn(),
+  createWalkIn: vi.fn(),
   checkoutStay: vi.fn(),
+}));
+
+vi.mock('../src/api/room-types', () => ({
+  listRoomTypes: vi.fn(),
 }));
 
 vi.mock('../src/api/orders', () => ({
@@ -34,13 +39,16 @@ vi.mock('../src/api/rooms', () => ({
 }));
 
 import * as bookingApi from '../src/api/bookings';
+import * as roomTypeApi from '../src/api/room-types';
 import * as stayApi from '../src/api/stays';
 import { ApiRequestError } from '../src/utils/errors';
 import { addDays, hotelToday } from '../src/utils/hotel-date';
 import StayListView from '../src/views/stays/StayListView.vue';
+import WalkInDialog from '../src/views/stays/WalkInDialog.vue';
 
 const mockedListBookings = vi.mocked(bookingApi.listBookings);
 const mockedListStays = vi.mocked(stayApi.listStays);
+const mockedListRoomTypes = vi.mocked(roomTypeApi.listRoomTypes);
 
 const pendingBooking: BookingDto = {
   id: 301,
@@ -120,6 +128,7 @@ describe('StayListView', () => {
       items: [currentStay],
       pagination: { page: 1, pageSize: 10, total: 1, totalPages: 1 },
     });
+    mockedListRoomTypes.mockResolvedValue({ items: [] });
   });
 
   it('默认加载待入住预订并展示入住入口', async () => {
@@ -157,6 +166,26 @@ describe('StayListView', () => {
     expect(wrapper.text()).toContain('入住记录');
     expect(wrapper.text()).toContain('0821');
     expect(wrapper.text()).toContain('退房');
+  });
+
+  it('提供直接入住入口，成功后刷新在住与待入住列表', async () => {
+    const wrapper = await mountView();
+
+    const walkInButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('直接入住'));
+    expect(walkInButton).toBeDefined();
+    await walkInButton?.trigger('click');
+    await flushPromises();
+
+    expect(mockedListRoomTypes).toHaveBeenCalledWith({ status: 'ACTIVE' });
+    const dialog = wrapper.findComponent(WalkInDialog);
+    expect(dialog.exists()).toBe(true);
+    dialog.vm.$emit('walked-in', 501);
+    await flushPromises();
+
+    expect(mockedListStays).toHaveBeenCalledTimes(2);
+    expect(mockedListBookings).toHaveBeenCalledTimes(2);
   });
 
   it('待入住预订加载失败显示错误并可重试', async () => {

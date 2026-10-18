@@ -1,6 +1,7 @@
 import type {
   CheckInBookingRequest,
   CheckoutStayRequest,
+  CreateStayRequest,
   OrderDto,
   Paginated,
   StayDetailDto,
@@ -49,6 +50,11 @@ export function checkInBooking(
   payload: CheckInBookingRequest,
 ): Promise<StayDto> {
   return post<StayDto>(`/bookings/${bookingId}/check-in`, payload, { silent: true });
+}
+
+/** S1 无预订入住（walk-in）；成功返回的 id 为权威入住编号。 */
+export function createWalkIn(payload: CreateStayRequest): Promise<StayDto> {
+  return post<StayDto>('/stays', payload, { silent: true });
 }
 
 /**

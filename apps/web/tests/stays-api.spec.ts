@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { getOrder } from '../src/api/orders';
 import { http } from '../src/api/request';
 import { listAvailableRooms } from '../src/api/rooms';
-import { checkInBooking, checkoutStay, getStay, listStays } from '../src/api/stays';
+import { checkInBooking, checkoutStay, createWalkIn, getStay, listStays } from '../src/api/stays';
 
 const originalAdapter = http.defaults.adapter;
 
@@ -91,6 +91,28 @@ describe('入住/退房 API 调用契约', () => {
       roomTypeId: 1,
       checkInDate: '2026-10-17',
       checkOutDate: '2026-10-19',
+    });
+  });
+
+  it('S1 walk-in 创建路径/请求体正确，且不携带额外字段', async () => {
+    const calls = installReply({ id: 501 });
+    await createWalkIn({
+      guestId: 9,
+      roomId: 12,
+      pricePerNight: 288,
+      expectedCheckOutDate: '2026-10-19',
+      depositAmount: 200,
+      note: '深夜到店',
+    });
+    expect(calls[0]?.method).toBe('post');
+    expect(calls[0]?.url).toBe('/stays');
+    expect(sentBody(calls[0])).toEqual({
+      guestId: 9,
+      roomId: 12,
+      pricePerNight: 288,
+      expectedCheckOutDate: '2026-10-19',
+      depositAmount: 200,
+      note: '深夜到店',
     });
   });
 
