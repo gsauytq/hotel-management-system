@@ -21,8 +21,7 @@ jobs:
 
       - name: 启用 pnpm（锁定版本）
         run: |
-          corepack enable
-          corepack prepare pnpm@12.6.0 --activate
+          npm install -g pnpm@12.6.0
           pnpm --version
 
       - name: 安装依赖
@@ -64,6 +63,7 @@ jobs:
           MYSQL_DATABASE: hotel
           MYSQL_USER: hms_app
           MYSQL_PASSWORD: ci_app_password
+          TZ: Asia/Shanghai
         ports:
           - 3306:3306
         options: >-
@@ -71,7 +71,6 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=30
-          --default-time-zone=+08:00
     env:
       # 仅 CI 测试环境使用的固定值，不得用于任何真实环境
       DATABASE_URL: mysql://hms_app:ci_app_password@127.0.0.1:3306/hotel
@@ -90,8 +89,7 @@ jobs:
 
       - name: 启用 pnpm（锁定版本）
         run: |
-          corepack enable
-          corepack prepare pnpm@12.6.0 --activate
+          npm install -g pnpm@12.6.0
           pnpm --version
 
       - name: 安装依赖
