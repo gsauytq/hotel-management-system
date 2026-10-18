@@ -17,6 +17,7 @@ import { addDays, hotelToday } from '@/utils/hotel-date';
 
 import CheckInDialog from './CheckInDialog.vue';
 import CheckoutDialog from './CheckoutDialog.vue';
+import WalkInDialog from './WalkInDialog.vue';
 
 type ActiveTab = 'pending' | 'stays';
 
@@ -49,6 +50,7 @@ const checkInVisible = ref(false);
 const checkInBookingId = ref<number | null>(null);
 const checkoutVisible = ref(false);
 const checkoutStayId = ref<number | null>(null);
+const walkInVisible = ref(false);
 
 const statusOptions: Array<{ value: StayStatus | ''; label: string }> = [
   { value: '', label: '全部状态' },
@@ -216,6 +218,15 @@ function handleCheckedOut(): void {
   void loadStays();
 }
 
+function handleWalkedIn(): void {
+  handleCheckedIn();
+}
+
+function handleWalkInRefresh(): void {
+  void loadPendingBookings();
+  void loadStays();
+}
+
 function openStayDetail(row: StayDto): void {
   void router.push({ name: 'stay-detail', params: { id: row.id } });
 }
@@ -229,6 +240,7 @@ onMounted(() => {
 <template>
   <PageContainer>
     <template #actions>
+      <el-button type="primary" @click="walkInVisible = true">直接入住</el-button>
       <el-button
         :loading="activeTab === 'pending' ? pendingLoading : staysLoading"
         @click="refreshActiveTab"
@@ -511,6 +523,11 @@ onMounted(() => {
       v-model="checkoutVisible"
       :stay-id="checkoutStayId"
       @checked-out="handleCheckedOut"
+    />
+    <WalkInDialog
+      v-model="walkInVisible"
+      @walked-in="handleWalkedIn"
+      @refresh-requested="handleWalkInRefresh"
     />
   </PageContainer>
 </template>

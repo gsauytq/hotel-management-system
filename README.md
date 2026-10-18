@@ -2,7 +2,7 @@
 
 小型酒店管理系统（模块化单体）。后端业务模块（认证、员工、客房、客人、预订、入住/退房、订单）已实现；前端已完成**工程基础设施、管理后台布局、登录认证、房型/客房、预订、入住/退房、账单、员工与客人管理页面**。经营看板因统计接口与口径仍为 V2 范围外，仅提供明确的未接入页面，不展示 Mock 指标。
 
-> **需求基线**：v1.0 已于 2026-10-18 批准（[批准工作稿](./docs/requirements-traceability-approval-draft.md) / [决策摘要](./docs/requirements-approval-decision-summary.md)）。A-20 B 首登强制改密已实现；walk-in 前端入口、E2E 与部署文档仍待完成，见[批准后行动登记](./docs/post-approval-action-register.md)。
+> **需求基线**：v1.0 已于 2026-10-18 批准（[批准工作稿](./docs/requirements-traceability-approval-draft.md) / [决策摘要](./docs/requirements-approval-decision-summary.md)）。A-20 B 首登强制改密与 walk-in 前端入口已实现；E2E 与部署文档仍待完成，见[批准后行动登记](./docs/post-approval-action-register.md)。
 
 ## 技术栈
 
@@ -18,7 +18,7 @@
 
 ```
 apps/server       后端 API（路由/控制器/服务/数据访问分层 + 统一错误处理）
-apps/web          前端 SPA（核心业务页面已实现；walk-in 入口待补）
+apps/web          前端 SPA（核心业务页面与 walk-in 入口已实现）
 packages/shared   前后端共享类型、错误码表、枚举
 docs/             架构、数据库、API 契约、安全与开发计划
 openapi/          OpenAPI 3.0.3 契约（单一事实来源）
@@ -208,7 +208,7 @@ node -e "console.log(require('node:crypto').randomBytes(24).toString('base64url'
 
 ## 前端基础设施（apps/web）
 
-前端为 Vue 3 + TypeScript（strict）+ Vite + Element Plus + Pinia + Vue Router 的 SPA。当前已完成**工程基础设施、管理后台布局、登录认证、房型/客房、预订、入住/退房、账单、员工与客人管理页面**；walk-in（S1）前端入口尚未实现；经营看板等待统计接口与口径批准。
+前端为 Vue 3 + TypeScript（strict）+ Vite + Element Plus + Pinia + Vue Router 的 SPA。当前已完成**工程基础设施、管理后台布局、登录认证、房型/客房、预订、入住/退房、账单、员工与客人管理页面**，以及 walk-in（S1）直接入住入口；经营看板等待统计接口与口径批准。
 
 ### 环境与 API 地址
 
@@ -280,7 +280,7 @@ node -e "console.log(require('node:crypto').randomBytes(24).toString('base64url'
 - **在住管理** `/stays`：
   - “待入住预订”页签使用 B2：`status=CONFIRMED`、`checkInDateTo=酒店今日`、`checkOutDateFrom=明日`，只展示可办理入住的预订。
   - “在住 / 历史入住”页签使用 S2：支持 `CHECKED_IN/CHECKED_OUT/全部`、客人关键字、排序与分页。
-  - walk-in（S1）前端入口尚未实现；后端 S1 已实现并有集成测试，前端任务见批准后行动登记。
+  - “直接入住”（walk-in，S1）入口：选择已有客人、启用房型、可用房间、预计离店日、房价/押金/备注；成功后刷新列表。无确定性幂等键，超时后禁止直接重试并提示核对服务端状态。
 - **办理入住** `CheckInDialog`：
   - B3 读取预订详情；M2 `GET /rooms/available` 按房型与今日→预计离店日期动态加载可分配房间。
   - 选择房间、可选押金；不提交 `pricePerNight`，使用预订价快照；二次确认后调用 B6。
@@ -290,7 +290,7 @@ node -e "console.log(require('node:crypto').randomBytes(24).toString('base64url'
   - 直接展示 S4 返回的账单明细/金额；网络超时或 5xx 时通过 S3 核对 `CHECKED_OUT`，再通过 O2 加载完整账单；账单明细加载失败时展示 S3 账单摘要并支持重试。
   - 退房成功后刷新列表/详情，不本地伪造房态或入住状态。
 - **状态与权限**：入住/退房入口由服务端状态决定（`CONFIRMED` / `CHECKED_IN`），所有登录角色可操作；后端仍独立校验重复入住、重复退房、房间占用与权限。
-- **待实现**：walk-in 入住（S1）前端入口；订单独立页面已实现（见“账单查询”章节）。
+- **已实现**：walk-in 入住（S1）前端入口；订单独立页面（见“账单查询”章节）。
 
 ### 账单查询（3.3.6B）
 
@@ -369,8 +369,9 @@ pnpm --filter @hms/web check     # typecheck + lint + format:check + test
 - 单元测试不依赖真实数据库（数据库探测与仓储通过依赖注入替换）；真实数据库行为用 `docker compose up -d mysql` + `curl http://localhost:3000/api/health` 冒烟验证（停库应返回 503，恢复后返回 200）。
 - 集成测试（Supertest + 真实 MySQL）默认跳过，需显式启用：`docker compose up -d mysql` 后运行
   `HMS_INTEGRATION=1 pnpm --filter @hms/server test`（测试数据以 `itest_`/随机后缀创建并自动清理）。
-- A-20 B 测试覆盖：后端改密成功/当前密码错误/策略拒绝/首登 gate/旧会话与旧密码失效；前端强制改密页、守卫、登录跳转。当前单元测试 330（shared 37 + server 151 + web 142）。
-- CI 基线（2026-10-18）：`static-and-unit`、`integration`、`secret-scan` 三个 job 全绿；A-20 变更以最新 `main` CI 运行为准；integration job 255 passed / 35 files（含 server 单测与真库用例）。E2E 仍未实现。
+- A-20 B 测试覆盖：后端改密成功/当前密码错误/策略拒绝/首登 gate/旧会话与旧密码失效；前端强制改密页、守卫、登录跳转。
+- walk-in 前端测试覆盖：房型加载、可用房查询、日期变化重查、S1 契约字段、409 冲突、网络/超时不确定态、重复提交防护、父页面刷新。
+- 当前单元测试 339（shared 37 + server 151 + web 151）；integration job 255 passed / 35 files（含 server 单测与真库用例）。A-20 与 walk-in 变更以最新 `main` CI 运行为准；E2E 仍未实现。
 
 ## 生产形态部署
 
