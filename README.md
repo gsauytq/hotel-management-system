@@ -1,6 +1,8 @@
 # 酒店管理系统（HMS）
 
-小型酒店管理系统（模块化单体）。后端业务模块（认证、员工、客房、客人、预订、入住/退房、订单）已实现；前端已完成**工程基础设施、管理后台布局、登录认证、房型/客房、预订、入住/退房、账单、员工与客人管理页面**。经营看板因后端统计接口与口径未批准，仅提供明确的未接入页面，不展示 Mock 指标。
+小型酒店管理系统（模块化单体）。后端业务模块（认证、员工、客房、客人、预订、入住/退房、订单）已实现；前端已完成**工程基础设施、管理后台布局、登录认证、房型/客房、预订、入住/退房、账单、员工与客人管理页面**。经营看板因统计接口与口径仍为 V2 范围外，仅提供明确的未接入页面，不展示 Mock 指标。
+
+> **需求基线**：v1.0 已于 2026-10-18 批准（[批准工作稿](./docs/requirements-traceability-approval-draft.md) / [决策摘要](./docs/requirements-approval-decision-summary.md)）。walk-in 前端入口、A-20 首登强制改密、E2E 与部署文档仍待完成，见[批准后行动登记](./docs/post-approval-action-register.md)。
 
 ## 技术栈
 
@@ -16,7 +18,7 @@
 
 ```
 apps/server       后端 API（路由/控制器/服务/数据访问分层 + 统一错误处理）
-apps/web          前端 SPA（骨架，业务页面占位）
+apps/web          前端 SPA（核心业务页面已实现；walk-in 入口待补）
 packages/shared   前后端共享类型、错误码表、枚举
 docs/             架构、数据库、API 契约、安全与开发计划
 openapi/          OpenAPI 3.0.3 契约（单一事实来源）
@@ -149,7 +151,7 @@ node -e "console.log(require('node:crypto').randomBytes(24).toString('base64url'
 
 ## 入住与退房（T-10 / T-11 写入部分）
 
-实现于 `apps/server/src/modules/stays/`；预订入住路由挂在 `/bookings/{id}/check-in`（B6），其余为 `/stays`（S1–S4）。**订单查询 O1/O2 未实现**（属 T-11 读接口，本次范围外）。
+实现于 `apps/server/src/modules/stays/`；预订入住路由挂在 `/bookings/{id}/check-in`（B6），其余为 `/stays`（S1–S4）。订单查询 O1/O2 已实现，见下文“账单查询与金额处理”。
 
 | 接口                                  | 角色 | 说明                                                                                                                                                                                                                                                                |
 | ------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -205,7 +207,7 @@ node -e "console.log(require('node:crypto').randomBytes(24).toString('base64url'
 
 ## 前端基础设施（apps/web）
 
-前端为 Vue 3 + TypeScript（strict）+ Vite + Element Plus + Pinia + Vue Router 的 SPA。当前已完成**工程基础设施、管理后台布局、登录认证、房型/客房、预订、入住/退房、账单、员工与客人管理页面**；经营看板等待后端统计接口与口径批准。
+前端为 Vue 3 + TypeScript（strict）+ Vite + Element Plus + Pinia + Vue Router 的 SPA。当前已完成**工程基础设施、管理后台布局、登录认证、房型/客房、预订、入住/退房、账单、员工与客人管理页面**；walk-in（S1）前端入口尚未实现；经营看板等待统计接口与口径批准。
 
 ### 环境与 API 地址
 
@@ -277,7 +279,7 @@ node -e "console.log(require('node:crypto').randomBytes(24).toString('base64url'
 - **在住管理** `/stays`：
   - “待入住预订”页签使用 B2：`status=CONFIRMED`、`checkInDateTo=酒店今日`、`checkOutDateFrom=明日`，只展示可办理入住的预订。
   - “在住 / 历史入住”页签使用 S2：支持 `CHECKED_IN/CHECKED_OUT/全部`、客人关键字、排序与分页。
-  - 页面不提供 walk-in（S1）入口。
+  - walk-in（S1）前端入口尚未实现；后端 S1 已实现并有集成测试，前端任务见批准后行动登记。
 - **办理入住** `CheckInDialog`：
   - B3 读取预订详情；M2 `GET /rooms/available` 按房型与今日→预计离店日期动态加载可分配房间。
   - 选择房间、可选押金；不提交 `pricePerNight`，使用预订价快照；二次确认后调用 B6。
@@ -287,7 +289,7 @@ node -e "console.log(require('node:crypto').randomBytes(24).toString('base64url'
   - 直接展示 S4 返回的账单明细/金额；网络超时或 5xx 时通过 S3 核对 `CHECKED_OUT`，再通过 O2 加载完整账单；账单明细加载失败时展示 S3 账单摘要并支持重试。
   - 退房成功后刷新列表/详情，不本地伪造房态或入住状态。
 - **状态与权限**：入住/退房入口由服务端状态决定（`CONFIRMED` / `CHECKED_IN`），所有登录角色可操作；后端仍独立校验重复入住、重复退房、房间占用与权限。
-- **未实现**：walk-in 入住（S1）不在本次范围；订单独立页面仍为占位。
+- **待实现**：walk-in 入住（S1）前端入口；订单独立页面已实现（见“账单查询”章节）。
 
 ### 账单查询（3.3.6B）
 
@@ -366,6 +368,7 @@ pnpm --filter @hms/web check     # typecheck + lint + format:check + test
 - 单元测试不依赖真实数据库（数据库探测与仓储通过依赖注入替换）；真实数据库行为用 `docker compose up -d mysql` + `curl http://localhost:3000/api/health` 冒烟验证（停库应返回 503，恢复后返回 200）。
 - 集成测试（Supertest + 真实 MySQL）默认跳过，需显式启用：`docker compose up -d mysql` 后运行
   `HMS_INTEGRATION=1 pnpm --filter @hms/server test`（测试数据以 `itest_`/随机后缀创建并自动清理）。
+- CI（2026-10-18 实际结果）：`static-and-unit`、`integration`、`secret-scan` 三个 job 全绿；单元测试 318（shared 37 + server 146 + web 135），integration job 249 passed / 35 files（含 server 单测与真库用例）。E2E 仍未实现。
 
 ## 生产形态部署
 
@@ -378,6 +381,7 @@ docker compose -f compose.prod.yml --profile tools run --rm seed   # 可选：�
 - `api` 容器启动时自动执行 `prisma migrate deploy`（只应用未执行迁移，幂等；失败则容器不启动）。
 - 迁移采用前滚策略，禁止手工改生产库结构（详见 `docs/database-design.md` §7）。
 - MySQL 不映射宿主端口，仅 Compose 内网可达。
+- **生产上线门禁**：Q-09 A（TLS/域名、`Secure`/HSTS）与 Q-08 B（PII 合规/保留期评审）必须先完成；A-20 B（首登强制改密）已批准但**尚未实现**，上线前必须补齐。
 
 ## 故障排查
 
@@ -396,4 +400,8 @@ docker compose -f compose.prod.yml --profile tools run --rm seed   # 可选：�
 - API 契约：`docs/api-contract.md` + `openapi/openapi.yaml`
 - 安全：`docs/security-design.md`
 - 开发计划：`docs/development-plan.md`
-- 需求追踪：`docs/requirements-traceability.md`
+- 需求追踪（批准前历史）：`docs/requirements-traceability.md`
+- 已批准需求基线：`docs/requirements-traceability-approval-draft.md`
+- 业务假设决议：`docs/business-assumptions-decision-list.md`
+- 批准决策摘要：`docs/requirements-approval-decision-summary.md`
+- 批准后行动登记：`docs/post-approval-action-register.md`

@@ -2,7 +2,7 @@
   "name": "hotel-management-system",
   "version": "0.1.0",
   "private": true,
-  "description": "小型酒店管理系统（HMS）— pnpm monorepo 骨架（业务功能尚未实现）",
+  "description": "小型酒店管理系统（HMS）— pnpm monorepo（核心业务已实现；需求基线 v1.0 已批准；walk-in UI / E2E 待补）",
   "packageManager": "pnpm@12.6.0",
   "engines": {
     "node": ">=22.12.0 <23"

@@ -31,10 +31,10 @@ async function main(): Promise<void> {
         role: 'ADMIN',
       },
     });
+    console.info('已创建初始管理员账号 admin（密码来自 ADMIN_INITIAL_PASSWORD，bcrypt cost=12）');
     console.info(
-      '已创建初始管理员账号 admin（密码来自 ADMIN_INITIAL_PASSWORD，bcrypt cost=12；登录功能尚未实现）',
+      'A-20 B 首登强制改密已批准但尚未实现；请部署后立即人工轮换初始密码，直至该安全任务完成',
     );
-    console.info('示例房型/房间数据待 T-02 业务表落库后补充，当前 seed 不写入任何业务数据');
   } finally {
     await prisma.$disconnect();
   }
