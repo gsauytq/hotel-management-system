@@ -2,7 +2,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 状态 | **批准阶段已收口；行动项进入下一阶段跟踪** |
+| 状态 | **行动项已收口；剩余 Q-08/Q-09 外部门禁待签字** |
 | 日期 | 2026-10-18 |
 | 已批准基线 | [`requirements-traceability-approval-draft.md`](./requirements-traceability-approval-draft.md) |
 | 决议清单 | [`business-assumptions-decision-list.md`](./business-assumptions-decision-list.md) |
@@ -19,10 +19,10 @@
 | PA-03 | **Q-09 A：TLS 证书/域名、Secure/HSTS** | **检查单已准备，待外部签字** | **生产阻断** | 业主/运维 | 验证步骤见 [`tls-launch-checklist.md`](./tls-launch-checklist.md)；未提供证书/域名前不得承载真实客人数据 |
 | PA-04 | **walk-in（S1）前端入口** | **已完成（2026-10-18）** | 功能缺口（已关闭） | 前端 | 已实现 `/stays` 直接入住对话框、可用房查询、S1 契约提交、409/超时处理与页面刷新测试 |
 | PA-05 | CI 增加构建门禁 | **已完成（2026-10-18）** | 质量加固 | DevOps | `static-and-unit` 已增加 `pnpm build`，CI 已实际通过 |
-| PA-06 | `main` 分支保护 / required checks | 未开始 | 流程加固 | 仓库管理员 | 当前无保护、无 rulesets；建议要求 PR + 四个 CI job（static/integration/secret-scan/e2e）+ 禁止强推/删除 |
+| PA-06 | `main` 分支保护 / required checks | **已完成（2026-10-18）** | 流程加固 | 仓库管理员 | 已启用：PR（0 approvals）、四个 required checks、strict、linear、conversation、禁止强推/删除、enforce admins；`v*` tag ruleset 禁止删除/更新 |
 | PA-07 | T-19 Playwright E2E | **已完成（2026-10-18）** | 发布门禁 | QA/开发 | `e2e/` 已落地；4 条主流程：首登改密、预订/入住/退房/订单、walk-in、RECEPTIONIST 403；CI e2e job 已接入 |
 | PA-08 | T-20 部署文档与运维手册 | **初版完成 + 备份恢复演练通过（2026-10-18）** | 发布门禁 | 运维/开发 | `docs/deployment.md` 已覆盖 TLS、首登改密、备份/恢复、升级/回滚、排障；10 张表 dump/restore 计数一致，草稿库已删除 |
-| PA-09 | 发布标签溯源 | 待发布决策 | 发布记录 | 发布负责人 | `v1.0.0-rc.1` 仍指向 `ac369f3`，不含批准文档（`87769eb`）；如需新 RC，应新建 tag，禁止移动旧 tag |
+| PA-09 | 发布标签溯源 | **已完成（2026-10-18）** | 发布记录 | 发布负责人 | `v1.0.0-rc.2` 指向 `d3e5cca`，四个 CI job 全绿；`v1.0.0-rc.1` 保留；tag ruleset 已保护 `v*` |
 | PA-10 | 文档状态对齐 | **本次收口完成** | 非阻断 | 开发 | README/package 描述、seed 日志、test-plan/review 报告历史标识、security-design A-20 状态已更新 |
 | PA-11 | 低风险安全遗留：B-1/B-2/B-3/C-2 | 登记 | 非阻断 | 开发/运维 | CSRF 无 Origin/Referer 放行、单实例限流、IP 限流、退房失败审计；按现有风险登记跟踪 |
 
@@ -51,12 +51,12 @@
 - 文档状态漂移已在本收口提交中修正；剩余事项已登记为 PA-01~PA-11。
 - 合并后 CI 全绿；当前为四个 job（static/integration/secret-scan/e2e）。
 
-**下一阶段建议顺序**：
+**剩余外部门禁**：
 
-1. **PA-06 分支保护**（配置项，需仓库管理员）
-2. **PA-02 / PA-03** 由业主/合规/运维并行推进
-3. **PA-09 发布 tag**（发布决策）
-4. PA-01、PA-04、PA-05、PA-07、PA-08 已完成；PA-02/PA-03 待外部签字
+1. **PA-02 Q-08 B**：PII 合规/保留期/掩码口径，待业主/合规签字。
+2. **PA-03 Q-09 A**：域名/证书/TLS/Secure/HSTS，待业主/运维签字。
+
+其余行动项（PA-01、PA-04~PA-09）已完成；解除上述两项外部门禁后方可生产上线。
 
 
 
