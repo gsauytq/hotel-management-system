@@ -1,4 +1,4 @@
-name: CI
+﻿name: CI
 
 on:
   push:
@@ -109,6 +109,58 @@ jobs:
           test -n "${DATABASE_URL}"
           pnpm --filter @hms/server test:integration
 
+  e2e:
+    name: 端到端测试（Playwright + Compose）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HMS_E2E_BASE_URL: http://127.0.0.1
+      # 必须与 e2e/compose.env 的 ADMIN_INITIAL_PASSWORD 一致；仅测试值。
+      HMS_E2E_ADMIN_INITIAL_PASSWORD: E2e#Init12345
+      HMS_E2E_ADMIN_PASSWORD: E2e#Flow12345
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+
+      - name: 启用 pnpm（锁定版本）
+        run: |
+          npm install -g pnpm@12.6.0
+          pnpm --version
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 安装 Chromium
+        run: pnpm --filter @hms/e2e exec playwright install --with-deps chromium
+
+      - name: 启动 E2E Compose 栈
+        run: |
+          docker compose -p hms-e2e -f compose.prod.yml -f e2e/compose.e2e.yml --env-file e2e/compose.env up -d --build
+
+      - name: 初始化管理员
+        run: |
+          docker compose -p hms-e2e -f compose.prod.yml -f e2e/compose.e2e.yml --env-file e2e/compose.env --profile tools run --rm seed
+
+      - name: 运行 E2E
+        run: pnpm --filter @hms/e2e test
+
+      - name: 上传 E2E 报告
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 7
+
+      - name: 清理 E2E Compose
+        if: always()
+        run: docker compose -p hms-e2e -f compose.prod.yml -f e2e/compose.e2e.yml --env-file e2e/compose.env down -v
+
   secret-scan:
     name: 密钥扫描
     runs-on: ubuntu-latest
@@ -119,6 +171,3 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # E2E（Playwright）待 e2e/ 包落地后新增独立 job：
-  # 依赖 TC-E2E-001~008，执行前需 docker compose -f compose.prod.yml up -d --build 并使用干净数据卷。
