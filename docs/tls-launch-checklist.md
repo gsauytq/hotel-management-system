@@ -2,11 +2,26 @@
 
 | 项 | 值 |
 | --- | --- |
-| 状态 | **待域名/证书与运维签字**；不得视为已完成 |
+| 状态 | **本地 HTTPS 链路已验证（自签证书）；生产域名/证书、边缘配置与运维签字待完成**；不得视为已完成 |
 | 依据 | 需求基线 v1.0 Q-09 A；`security-design.md` §11；`docs/deployment.md` §4 |
 | 日期 | 2026-10-18 |
 
-> 当前 `compose.prod.yml` 的 web 容器只提供 HTTP 80（宿主默认 8080），TLS 由边缘 Nginx/LB 终结。没有证书/域名时无法完成本检查单。
+> 当前 `compose.prod.yml` 的 web 容器只提供 HTTP 80（宿主默认 8080），TLS 由边缘 Nginx/LB 终结。没有生产证书/域名时无法完成本检查单。
+
+## 0. 本地技术验证（2026-10-18，自签证书）
+
+已在本地以自签证书 + Nginx TLS 终结代理对生产 Compose 栈做技术验证，**不代表生产域名/证书已就绪**：
+
+| 验证项 | 结果 |
+| --- | --- |
+| HTTP → HTTPS | 301，`Location: https://localhost/` |
+| HTTPS 访问 | 200 |
+| HSTS | `Strict-Transport-Security: max-age=15552000` |
+| 会话 Cookie | `Secure` / `HttpOnly` / `SameSite=Strict` 均存在 |
+| `deploy-smoke.mjs`（HTTPS） | 14/14 PASS（`https://localhost`） |
+| TLS 协议配置 | TLS 1.2 / 1.3 |
+
+> 自签证书仅用于本地验证；测试时使用 `curl -k` / `NODE_TLS_REJECT_UNAUTHORIZED=0`，不得进入生产。生产必须使用受信 CA 证书、真实域名与正式边缘代理配置。
 
 ## 1. 上线前检查
 
