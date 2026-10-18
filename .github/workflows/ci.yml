@@ -36,6 +36,9 @@ jobs:
       - name: 格式检查
         run: pnpm format:check
 
+      - name: 构建
+        run: pnpm build
+
       - name: 单元测试（默认排除集成）
         run: pnpm -r test
 

@@ -8,7 +8,7 @@
 | 输入基线 | [requirements-traceability.md](./requirements-traceability.md) §2 假设需求基线（**未批准**，Q-01）；[api-contract.md](./api-contract.md) v1.0；[database-design.md](./database-design.md) v1.0；[architecture.md](./architecture.md) v1.0；[security-design.md](./security-design.md) v1.0；[development-plan.md](./development-plan.md) v1.0；当前实现（`apps/server`、`apps/web`、`packages/shared`）源码审阅 |
 | 用例目录 | [tests/test-cases.md](../tests/test-cases.md)（单一事实来源，本文只做索引） |
 
-> **状态更新（2026-10-18）**：需求基线 v1.0 已批准（见 [`requirements-traceability-approval-draft.md`](./requirements-traceability-approval-draft.md)）。A-20 B 首登强制改密与 walk-in 前端入口均已实现并有后端/前端测试。当前本地单元测试 **339**（shared 37 + server 151 + web 151），integration job **255 passed / 35 files**（含 server 单测与真库用例）。G-1/G-2 已解决；G-4/G-8/G-9 等已有回归测试。E2E（G-3）与部署文档（G-11）仍待完成。以下 §1.1–§1.3 为 **2026-10-17 历史快照**，阅读时以本横幅为准。
+> **状态更新（2026-10-18）**：需求基线 v1.0 已批准（见 [`requirements-traceability-approval-draft.md`](./requirements-traceability-approval-draft.md)）。A-20 B 首登强制改密与 walk-in 前端入口均已实现并有后端/前端测试。当前本地单元测试 **339**（shared 37 + server 151 + web 151），integration job **255 passed / 35 files**（含 server 单测与真库用例）。G-1/G-2 已解决；G-4/G-8/G-9 等已有回归测试。E2E（G-3）仍待完成；部署手册初版（G-11）已补齐至 [`deployment.md`](./deployment.md)，备份恢复演练待执行。以下 §1.1–§1.3 为 **2026-10-17 历史快照**，阅读时以本横幅为准。
 
 > **声明 1（基线风险）**：本文原文的“未批准假设基线”描述适用于 2026-10-18 之前；批准后以 [`requirements-traceability-approval-draft.md`](./requirements-traceability-approval-draft.md) 为准。
 > **声明 2（证据纪律）**：本文「已有自动化」指**测试代码存在**（经源码审阅确认），不等价于「已通过」。历史执行记录见 §1.3；未执行的部分明确标注，不虚构结果。
