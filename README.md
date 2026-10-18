@@ -387,7 +387,7 @@ docker compose -f compose.prod.yml --profile tools run --rm seed   # 可选：�
 - `api` 容器启动时自动执行 `prisma migrate deploy`（只应用未执行迁移，幂等；失败则容器不启动）。
 - 迁移采用前滚策略，禁止手工改生产库结构（详见 `docs/database-design.md` §7）。
 - MySQL 不映射宿主端口，仅 Compose 内网可达。
-- **生产上线门禁**：Q-09 A（TLS/域名、`Secure`/HSTS）与 Q-08 B（PII 合规/保留期评审）必须先完成；A-20 B（首登强制改密）已实现。
+- **生产上线门禁**：Q-09 A（TLS/域名、`Secure`/HSTS）与 Q-08 B（PII 合规/保留期评审）必须先完成；当前 Q-09 A 业主决定暂缓生产上线，Q-08 B 待合规书面结论；A-20 B（首登强制改密）已实现。
 - **首次 seed 后**：新管理员首次登录必须修改初始密码。部署冒烟如遇 `mustChangePassword=true`，需提供 `HMS_SMOKE_NEW_PASSWORD` 执行一次改密，或先人工改密。
 
 ## 故障排查
@@ -408,8 +408,8 @@ docker compose -f compose.prod.yml --profile tools run --rm seed   # 可选：�
 - 安全：`docs/security-design.md`
 - 开发计划：`docs/development-plan.md`
 - 生产部署与运维：`docs/deployment.md`
-- PII 合规检查单（Q-08 B，待签字）：`docs/pii-compliance-checklist.md`
-- TLS 上线检查单（Q-09 A，待签字）：`docs/tls-launch-checklist.md`
+- PII 合规检查单（Q-08 B，待合规书面结论）：`docs/pii-compliance-checklist.md`
+- TLS 上线检查单（Q-09 A，暂缓生产上线；本地链路已验证）：`docs/tls-launch-checklist.md`
 - 需求追踪（批准前历史）：`docs/requirements-traceability.md`
 - 已批准需求基线：`docs/requirements-traceability-approval-draft.md`
 - 业务假设决议：`docs/business-assumptions-decision-list.md`
