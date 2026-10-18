@@ -2,7 +2,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 状态 | 初版（2026-10-18）；生产上线前必须完成 Q-08 B 与 Q-09 A |
+| 状态 | 初版（2026-10-18）；Q-08 B 书面结论已确认（独立合规签字待补）；Q-09 A 暂缓生产上线 |
 | 适用版本 | 需求基线 v1.0；含 A-20 B 首登强制改密与 walk-in 前端 |
 | 关联 | [`post-approval-action-register.md`](./post-approval-action-register.md)、[`security-design.md`](./security-design.md)、[`test-plan.md`](./test-plan.md) |
 
@@ -14,9 +14,9 @@
 - [ ] 已复制 `.env.example` 为 `.env`，并替换全部 `REPLACE_*` 占位值。
 - [ ] `MYSQL_ROOT_PASSWORD`、`MYSQL_PASSWORD` 使用强随机值；`GUEST_ID_HMAC_KEY`、`GUEST_ID_CIPHER_KEY` 为 32 字节 base64。
 - [ ] `ADMIN_INITIAL_PASSWORD` ≥10 位且不含用户名；首次登录后必须修改（A-20 B）。
-- [ ] Q-09 A：域名与 TLS 证书就绪；边缘代理启用 HTTPS、HSTS，并只暴露 443（内部可回源 8080）。检查单见 [`tls-launch-checklist.md`](./tls-launch-checklist.md)。
-- [ ] Q-08 B：PII 合规、证件号保留期、掩码口径已形成书面结论。检查单见 [`pii-compliance-checklist.md`](./pii-compliance-checklist.md)。
-- [ ] 已确认 `main` 分支保护与 CI 三项检查（静态/集成/密钥扫描）为合并门禁。
+- [ ] Q-09 A：域名与 TLS 证书就绪；边缘代理启用 HTTPS、HSTS，并只暴露 443（内部可回源 8080）。当前业主决定暂缓生产上线；本地链路已验证。检查单见 [`tls-launch-checklist.md`](./tls-launch-checklist.md)。
+- [ ] Q-08 B：PII 合规、证件号保留期、掩码口径已形成书面结论（2026-10-18 业主电子确认）；独立合规签字与生产前技术债待补。检查单见 [`pii-compliance-checklist.md`](./pii-compliance-checklist.md)。
+- [ ] 已确认 `main` 分支保护与 CI 四项检查（静态/集成/密钥扫描/E2E）为合并门禁。
 
 ## 2. 首次部署
 
